@@ -1,0 +1,36 @@
+# Tiny end-to-end pipeline check. No gated downloads, CPU-friendly.
+run_name: smoke
+
+model:
+  name: hf-internal-testing/tiny-random-LlamaForCausalLM
+  sae_layers: [1]
+  lora_layers: [0, 1]
+  device: cpu
+  dtype: float32
+
+sae:
+  source: random
+  width: 512
+
+data:
+  domain: bio
+  target_corpus: data/smoke/target.jsonl
+  retain_corpus: data/smoke/retain.jsonl
+  max_target_docs: 32
+  max_retain_docs: 32
+  max_seq_len: 64
+
+selection:
+  top_k: 8
+  tau: 1.0
+  max_docs: 16
+  batch_size: 4
+  cache_dir: outputs/features_smoke
+
+train:
+  steps: 3
+  batch_size: 2
+  lr: 1.0e-4
+  lora_rank: 4
+  lambda_scale: 30.0
+  save_dir: outputs/runs_smoke

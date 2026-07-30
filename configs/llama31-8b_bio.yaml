@@ -1,0 +1,41 @@
+# CRISP best configuration for Llama-3.1-8B on WMDP-Bio (Appendix F).
+run_name: llama31-8b_bio
+
+model:
+  name: meta-llama/Llama-3.1-8B
+  sae_layers: [4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28]
+  lora_layers: [3, 4, 5, 6, 7, 8, 9]
+  dtype: bfloat16
+
+sae:
+  # Llama Scope publishes one repo per layer; verify the release you have access to.
+  source: llama_scope
+  repo_template: "fnlp/Llama3_1-8B-Base-L{layer}R-8x"
+  width: 32768
+
+data:
+  domain: bio
+  max_target_docs: 5000
+  max_retain_docs: 5000
+  max_chars: 1000
+  max_seq_len: 256
+
+selection:
+  top_k: 10
+  tau: 3.0
+  max_docs: 500
+  batch_size: 2
+
+train:
+  steps: 200
+  batch_size: 1
+  lr: 4.0e-5
+  lora_rank: 8
+  lambda_scale: 40.0
+  beta: 0.99
+  gamma: 0.01
+
+eval:
+  split: test
+  mcq_batch_size: 2
+  gen_max_new_tokens: 50

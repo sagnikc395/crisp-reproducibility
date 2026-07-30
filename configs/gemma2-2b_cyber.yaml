@@ -1,0 +1,41 @@
+# CRISP best configuration for Gemma-2-2B on WMDP-Cyber (Appendix F).
+run_name: gemma2-2b_cyber
+
+model:
+  name: google/gemma-2-2b
+  sae_layers: [4, 6, 8, 10, 12, 14]
+  lora_layers: [3, 4, 5, 6, 7, 8, 9]
+
+sae:
+  source: gemma_scope
+  repo_id: google/gemma-scope-2b-pt-res
+  filename_template: auto   # picks the release with average L0 nearest l0_target
+  l0_target: 100
+  width: 16384
+
+data:
+  domain: cyber
+  max_target_docs: 0   # WMDP-Cyber: use all 986 entries
+  max_retain_docs: 0
+  max_chars: 1000
+  max_seq_len: 256
+
+selection:
+  top_k: 50
+  tau: 3.0
+  max_docs: 500
+  batch_size: 4
+
+train:
+  steps: 200
+  batch_size: 2
+  lr: 4.0e-5
+  lora_rank: 4
+  lambda_scale: 20.0
+  beta: 0.99
+  gamma: 0.01
+
+eval:
+  split: test
+  mcq_batch_size: 4
+  gen_max_new_tokens: 50
