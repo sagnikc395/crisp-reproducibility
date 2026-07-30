@@ -29,6 +29,15 @@ def _load_config(args) -> Config:
     return cfg
 
 
+def _require_torch(cfg: Config, command: str) -> None:
+    """Selection/training read and differentiate the residual stream via hooks."""
+    if cfg.model.backend != "torch":
+        raise SystemExit(
+            f"`crisp {command}` needs the torch backend "
+            f"(got model.backend={cfg.model.backend!r}); mlx is inference-only"
+        )
+
+
 def _load_corpora(cfg: Config) -> tuple[list[str], list[str], list[str]]:
     target = load_corpus(
         cfg.data.domain, "target", cfg.data.target_corpus,
@@ -64,6 +73,7 @@ def _get_features(cfg, model, tokenizer, saes, target, retain, device, refresh: 
 
 def cmd_select(args) -> None:
     cfg = _load_config(args)
+    _require_torch(cfg, "select")
     set_seed(cfg.data.seed)
     model, tokenizer, device, dtype = load_model_and_tokenizer(cfg)
     saes = load_saes(cfg.sae, cfg.model.sae_layers, model.config.hidden_size, device, dtype)
@@ -74,6 +84,7 @@ def cmd_select(args) -> None:
 
 def cmd_train(args) -> None:
     cfg = _load_config(args)
+    _require_torch(cfg, "train")
     set_seed(cfg.train.seed)
     model, tokenizer, device, dtype = load_model_and_tokenizer(cfg)
     saes = load_saes(cfg.sae, cfg.model.sae_layers, model.config.hidden_size, device, dtype)
@@ -99,13 +110,21 @@ def cmd_train(args) -> None:
 
 def cmd_eval(args) -> None:
     cfg = _load_config(args)
-    model, tokenizer, device, _ = load_model_and_tokenizer(cfg)
-    if args.adapter:
-        from peft import PeftModel
+    if args.backend:
+        cfg.model.backend = args.backend
 
-        model = PeftModel.from_pretrained(model, args.adapter)
-        model.eval()
-        log.info("loaded adapter from %s", args.adapter)
+    if cfg.model.backend == "mlx":
+        from .mlx_backend import load_mlx_model_and_tokenizer
+
+        model, tokenizer, device, _ = load_mlx_model_and_tokenizer(cfg, args.adapter)
+    else:
+        model, tokenizer, device, _ = load_model_and_tokenizer(cfg)
+        if args.adapter:
+            from peft import PeftModel
+
+            model = PeftModel.from_pretrained(model, args.adapter)
+            model.eval()
+            log.info("loaded adapter from %s", args.adapter)
     results = evaluate_model(
         model, tokenizer, cfg, device,
         judge=not args.no_judge, skip_generation=args.skip_generation,
@@ -120,6 +139,7 @@ def cmd_baseline(args) -> None:
     from .baselines.rmu import RMUConfig, train_rmu
 
     cfg = _load_config(args)
+    _require_torch(cfg, "baseline")
     set_seed(cfg.train.seed)
     model, tokenizer, device, _ = load_model_and_tokenizer(cfg)
     target, retain, _ = _load_corpora(cfg)
@@ -161,6 +181,7 @@ def cmd_sweep(args) -> None:
     from .sweep import run_sweep
 
     cfg = _load_config(args)
+    _require_torch(cfg, "sweep")
     run_sweep(cfg, n_trials=args.trials, out_dir=args.out or "outputs/sweeps")
 
 
@@ -190,6 +211,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_eval = sub.add_parser("eval", help="evaluate a base model or a saved adapter")
     common(p_eval)
     p_eval.add_argument("--adapter", help="path to a saved LoRA adapter")
+    p_eval.add_argument("--backend", choices=["torch", "mlx"],
+                        help="inference backend (default: model.backend, usually torch)")
     p_eval.add_argument("--out")
     p_eval.add_argument("--no-judge", action="store_true")
     p_eval.add_argument("--skip-generation", action="store_true")

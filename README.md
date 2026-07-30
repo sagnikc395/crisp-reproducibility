@@ -60,6 +60,42 @@ python -m crisp train -c configs/gemma2-2b_bio.yaml \
 Add `--no-judge` to skip the paid LLM rater, or `--skip-generation` to skip
 generation entirely and report MCQ metrics only.
 
+## Local inference on Apple silicon (mlx-lm)
+
+`crisp eval` has a second backend that runs the model through
+[mlx-lm](https://github.com/ml-explore/mlx-lm) instead of torch/MPS — much faster
+on an M-series Mac, and 4-bit weights keep Gemma-2-2B at ~1.5 GB.
+
+```bash
+uv sync --extra mlx
+
+python -m crisp eval -c configs/gemma2-2b_cyber_mlx.yaml --no-judge
+python -m crisp eval -c configs/gemma2-2b_bio_mlx.yaml   --no-judge
+
+# or switch any existing config over at the command line
+python -m crisp eval -c configs/gemma2-2b_cyber.yaml --backend mlx --no-judge
+```
+
+The backend is selected by `model.backend: torch|mlx`, with `model.mlx_name`
+naming the MLX checkpoint (defaults to the `mlx-community` mirror of
+`model.name`).
+
+**It is inference-only.** `select`, `train`, `baseline` and `sweep` exit with an
+error under `backend: mlx`: CRISP differentiates through per-layer residual
+activations, and mlx-lm exposes neither forward hooks nor the autograd surface
+that needs. Two consequences:
+
+* `--adapter` accepts mlx-lm adapters only; a PEFT adapter produced by
+  `crisp train` is rejected with a pointer back to the torch backend.
+* Quantised weights perturb the residual stream, so 4-bit MCQ accuracies drift
+  from the bf16 numbers in the paper. Use it for fast iteration and sanity
+  checks; report from the torch path.
+
+Implementation notes live at the top of `src/crisp/mlx_backend.py` — chiefly why
+MCQ batches are right-padded here (mlx-lm builds its own causal mask and accepts
+no attention mask) and why the LM head is applied only to the final position
+(Gemma's 256k-row logit matrix over a padded batch is several GB otherwise).
+
 ## How the code maps onto the paper
 
 | Paper | Code |

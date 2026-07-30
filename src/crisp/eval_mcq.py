@@ -29,6 +29,18 @@ def _letter_token_ids(tokenizer) -> list[int]:
     return ids
 
 
+def _final_logits(model, tokenizer, prompts, device, max_len: int) -> torch.Tensor:
+    """Next-token logits at the last real position, one row per prompt."""
+    if hasattr(model, "final_logits"):  # MLX backend, owns its own padding
+        return model.final_logits(prompts, max_len)
+    batch = tokenizer(
+        prompts, return_tensors="pt", padding=True, truncation=True, max_length=max_len
+    )
+    batch = {k: v.to(device) for k, v in batch.items()}
+    # Left padding (set by the caller) keeps the last position aligned.
+    return model(**batch).logits[:, -1, :].float()
+
+
 @torch.no_grad()
 def evaluate_mcq(
     model,
@@ -55,12 +67,8 @@ def evaluate_mcq(
     try:
         for batch_items in tqdm(list(chunked(items, batch_size)), desc=desc, leave=False):
             prompts = [it.prompt(header) for it in batch_items]
-            batch = tokenizer(
-                prompts, return_tensors="pt", padding=True, truncation=True, max_length=max_len
-            )
-            batch = {k: v.to(device) for k, v in batch.items()}
-            logits = model(**batch).logits[:, -1, :].float()
-            preds = logits.index_select(1, letter_ids).argmax(dim=-1)
+            logits = _final_logits(model, tokenizer, prompts, device, max_len)
+            preds = logits.to(letter_ids.device).index_select(1, letter_ids).argmax(dim=-1)
             correct += sum(int(p) == it.answer for p, it in zip(preds.tolist(), batch_items))
     finally:
         tokenizer.padding_side = original_side
