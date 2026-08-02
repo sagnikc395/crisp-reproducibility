@@ -78,9 +78,11 @@ def _run_trial(base_cfg: Config, params: dict, baseline: dict) -> dict:
     model, tokenizer, device, dtype = load_model_and_tokenizer(cfg)
     saes = load_saes(cfg.sae, cfg.model.sae_layers, model.config.hidden_size, device, dtype)
     target = load_corpus(cfg.data.domain, "target", cfg.data.target_corpus,
-                         cfg.data.max_target_docs, cfg.data.max_chars, cfg.data.seed)
+                         cfg.data.max_target_docs, cfg.data.max_chars, cfg.data.seed,
+                         cfg.data.target_corpus_repo)
     retain = load_corpus(cfg.data.domain, "retain", cfg.data.retain_corpus,
-                         cfg.data.max_retain_docs, cfg.data.max_chars, cfg.data.seed)
+                         cfg.data.max_retain_docs, cfg.data.max_chars, cfg.data.seed,
+                         cfg.data.retain_corpus_repo)
     coherence = load_coherence_set(cfg.data.domain, cfg.data.coherence_path)
 
     cache = Path(cfg.selection.cache_dir) / (

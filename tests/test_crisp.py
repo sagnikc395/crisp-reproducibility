@@ -233,6 +233,26 @@ def test_config_overrides_and_unknown_keys(tmp_path):
         Config.from_yaml(bad)
 
 
+def test_bio_forget_corpus_comes_from_its_own_repo():
+    from crisp.data import WMDP_BIO_FORGET_REPO, WMDP_CORPORA_REPO, WMDP_CORPUS_SOURCES
+
+    assert WMDP_CORPUS_SOURCES["bio_target"] == (WMDP_BIO_FORGET_REPO, None)
+    for key in ("bio_retain", "cyber_target", "cyber_retain"):
+        repo, config_name = WMDP_CORPUS_SOURCES[key]
+        assert repo == WMDP_CORPORA_REPO and config_name
+
+
+def test_bio_configs_pin_the_forget_corpus_repo():
+    from pathlib import Path
+
+    from crisp.data import WMDP_BIO_FORGET_REPO
+
+    root = Path(__file__).resolve().parents[1] / "configs"
+    for path in sorted(root.glob("*_bio*.yaml")):
+        cfg = Config.from_yaml(path)
+        assert cfg.data.target_corpus_repo == WMDP_BIO_FORGET_REPO, path.name
+
+
 def test_shipped_assets_have_expected_sizes():
     from crisp.data import load_coherence_set, load_gen_prompts
 

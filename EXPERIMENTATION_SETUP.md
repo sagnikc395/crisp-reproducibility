@@ -34,10 +34,12 @@ the Gemma-2-2B rows of Table 3 (Harry Potter).
 
 ## Day-one actions
 
-1. **Request the WMDP bio-forget corpus from CAIS now.** Manual approval, unpredictable
-   turnaround, gates half of Table 1. The MCQs (`cais/wmdp`) are openly downloadable —
-   build and test the eval half while waiting. Check whether the **cyber** corpus is open;
-   if so, start there.
+1. **Request the WMDP bio-forget corpus from CAIS now** — it lives in its own gated repo,
+   [`cais/wmdp-bio-forget-corpus`](https://huggingface.co/datasets/cais/wmdp-bio-forget-corpus),
+   not in `cais/wmdp-corpora`, and the bio configs already point at it
+   (`data.target_corpus_repo`). Approval is unpredictable and gates half of Table 1. The
+   MCQs (`cais/wmdp`) and the cyber/retain corpora are open — build and test the eval half,
+   and run the **cyber** pair, while waiting.
 
 2. **Run the Harry Potter demo end-to-end on Gemma-2-2B.** Only path where the authors'
    code, a public dataset, and a small model all line up. Validates the environment against

@@ -9,6 +9,15 @@ corpus, then LoRA-fine-tunes the model to suppress those features on the target
 corpus while pinning its hidden states on benign text. Unlike inference-time SAE
 steering, the edit lives in the weights.
 
+## Documentation
+
+| File | What it's for |
+| --- | --- |
+| [`SETUP.md`](SETUP.md) | **Start here.** Project description, what each module is for, environment setup, how to run. |
+| [`IMPLEMENTATION_LOG.md`](IMPLEMENTATION_LOG.md) | What was built in what order, what happens on `crisp train` step by step, and the judgement calls that aren't in the paper. |
+| [`EXPERIMENTATION_SETUP.md`](EXPERIMENTATION_SETUP.md) | The reproduction plan: what to run, what it costs, target numbers. |
+| `README.md` (this file) | Reference: paper-equation → code-symbol table, CLI surface, implementation notes. |
+
 ## Install
 
 ```bash
@@ -21,7 +30,7 @@ uv sync --extra dev            # add --extra judge for the LLM rater, --extra sw
 | --- | --- | --- |
 | `cais/wmdp` MCQs, `cais/mmlu` | public | nothing to do |
 | `cais/wmdp-corpora` cyber forget/retain, bio retain | public | nothing to do |
-| `cais/wmdp-corpora` **bio-forget** | access-controlled | request at the [dataset page](https://huggingface.co/datasets/cais/wmdp-corpora), then `export HF_TOKEN=…` (or pass `-o data.target_corpus=path/to/bio-forget.jsonl`) |
+| `cais/wmdp-bio-forget-corpus` (bio forget) | gated | request at the [dataset page](https://huggingface.co/datasets/cais/wmdp-bio-forget-corpus), then `export HF_TOKEN=…` (or pass `-o data.target_corpus=path/to/bio-forget.jsonl`) |
 | `google/gemma-2-2b`, `meta-llama/Llama-3.1-8B` | gated | accept the licence on the model page, then `export HF_TOKEN=…` |
 | Gemma Scope SAEs | public | nothing to do |
 | Fluency / Concept scores | needs an LLM rater | `export ANTHROPIC_API_KEY=…` (or run with `--no-judge`) |

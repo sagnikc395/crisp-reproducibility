@@ -12,17 +12,21 @@ from .utils import get_logger, hf_token
 
 log = get_logger(__name__)
 
-# WMDP corpora ship as jsonl files inside a single HF repo; config names differ
-# between mirrors so we try the documented filenames directly.
+# Most WMDP corpora ship as parquet configs of a single HF repo. The bio forget
+# corpus is not published there: it is gated and lives in its own repo with a
+# single default config.
 WMDP_CORPORA_REPO = "cais/wmdp-corpora"
-#: HF dataset config name per corpus. ``bio-forget-corpus`` is access-controlled
-#: and is not published as a config, so it also has jsonl filename fallbacks.
-WMDP_CORPUS_CONFIGS: dict[str, str] = {
-    "bio_target": "bio-forget-corpus",
-    "bio_retain": "bio-retain-corpus",
-    "cyber_target": "cyber-forget-corpus",
-    "cyber_retain": "cyber-retain-corpus",
+WMDP_BIO_FORGET_REPO = "cais/wmdp-bio-forget-corpus"
+
+#: ``(repo_id, config_name)`` per corpus. ``config_name`` is ``None`` for repos
+#: that expose a single default config.
+WMDP_CORPUS_SOURCES: dict[str, tuple[str, str | None]] = {
+    "bio_target": (WMDP_BIO_FORGET_REPO, None),
+    "bio_retain": (WMDP_CORPORA_REPO, "bio-retain-corpus"),
+    "cyber_target": (WMDP_CORPORA_REPO, "cyber-forget-corpus"),
+    "cyber_retain": (WMDP_CORPORA_REPO, "cyber-retain-corpus"),
 }
+#: Raw jsonl filenames used by older uploads/mirrors, tried if the config fails.
 WMDP_CORPUS_FILES: dict[str, list[str]] = {
     "bio_target": ["bio_remove_dataset.jsonl", "bio-forget-corpus.jsonl"],
     "bio_retain": ["bio-retain-corpus.jsonl", "bio_retain_dataset.jsonl"],
@@ -97,28 +101,31 @@ def _load_local(path: str | Path) -> list[str]:
     return [b for b in path.read_text(errors="ignore").split("\n\n") if b.strip()]
 
 
-def _download_wmdp_corpus(key: str) -> list[str]:
+def _download_wmdp_corpus(key: str, repo_override: str | None = None) -> list[str]:
     from huggingface_hub import hf_hub_download
     from huggingface_hub.errors import HfHubHTTPError
 
+    default_repo, config_name = WMDP_CORPUS_SOURCES[key]
+    repo_id = repo_override or default_repo
+    if repo_override and repo_override != default_repo:
+        config_name = None  # a custom repo is assumed to expose a default config
     errors = []
 
     # Preferred path: the published parquet configs.
     try:
         from datasets import load_dataset
 
-        ds = load_dataset(
-            WMDP_CORPORA_REPO, WMDP_CORPUS_CONFIGS[key], split="train", token=hf_token()
-        )
+        kwargs = {"name": config_name} if config_name else {}
+        ds = load_dataset(repo_id, split="train", token=hf_token(), **kwargs)
         return [_extract_text(row) for row in ds]
-    except Exception as exc:  # config missing (gated bio-forget) or offline
-        errors.append(f"config {WMDP_CORPUS_CONFIGS[key]}: {type(exc).__name__}")
+    except Exception as exc:  # no access (gated), config missing, or offline
+        errors.append(f"config {config_name or 'default'}: {type(exc).__name__}")
 
     # Fallback: raw jsonl uploads used by some mirrors of the forget corpora.
     for filename in WMDP_CORPUS_FILES[key]:
         try:
             path = hf_hub_download(
-                repo_id=WMDP_CORPORA_REPO,
+                repo_id=repo_id,
                 filename=filename,
                 repo_type="dataset",
                 token=hf_token(),
@@ -127,10 +134,10 @@ def _download_wmdp_corpus(key: str) -> list[str]:
         except (HfHubHTTPError, OSError, ValueError) as exc:  # not found / gated
             errors.append(f"{filename}: {type(exc).__name__}")
     raise FileNotFoundError(
-        f"could not fetch WMDP corpus {key!r} from {WMDP_CORPORA_REPO} ({'; '.join(errors)}).\n"
-        "The bio-forget corpus is gated: request access at https://huggingface.co/datasets/"
-        "cais/wmdp-corpora, run `huggingface-cli login`, or point "
-        "data.target_corpus / data.retain_corpus at a local .jsonl file."
+        f"could not fetch WMDP corpus {key!r} from {repo_id} ({'; '.join(errors)}).\n"
+        f"If it is gated, request access at https://huggingface.co/datasets/{repo_id}, "
+        "run `hf auth login`, or point data.target_corpus / data.retain_corpus at a "
+        "local .jsonl file."
     )
 
 
@@ -141,14 +148,17 @@ def load_corpus(
     max_docs: int,
     max_chars: int,
     seed: int,
+    repo_override: str | None = None,
 ) -> list[str]:
     """Load and preprocess one corpus. ``role`` is ``target`` or ``retain``."""
+    key = f"{domain}_{role}"
     if override_path:
         raw = _load_local(override_path)
         source = override_path
     else:
-        raw = _download_wmdp_corpus(f"{domain}_{role}")
-        source = f"{WMDP_CORPORA_REPO}:{domain}-{role}"
+        raw = _download_wmdp_corpus(key, repo_override)
+        repo, config_name = WMDP_CORPUS_SOURCES[key]
+        source = repo_override or (f"{repo}:{config_name}" if config_name else repo)
 
     docs = [clean_document(t, max_chars) for t in raw]
     docs = [d for d in docs if len(d) >= 50]

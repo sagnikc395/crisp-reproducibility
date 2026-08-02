@@ -9,6 +9,9 @@ model:
 
 data:
   domain: bio
+  # Gated: request access on the dataset page and export HF_TOKEN.
+  target_corpus_repo: cais/wmdp-bio-forget-corpus
+  retain_corpus_repo: cais/wmdp-corpora
   max_seq_len: 256
 
 eval:

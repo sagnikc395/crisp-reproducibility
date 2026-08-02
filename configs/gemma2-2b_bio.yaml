@@ -15,6 +15,9 @@ sae:
 
 data:
   domain: bio
+  # Gated: request access on the dataset page and export HF_TOKEN.
+  target_corpus_repo: cais/wmdp-bio-forget-corpus
+  retain_corpus_repo: cais/wmdp-corpora
   max_target_docs: 5000
   max_retain_docs: 5000
   max_chars: 1000

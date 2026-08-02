@@ -42,10 +42,12 @@ def _load_corpora(cfg: Config) -> tuple[list[str], list[str], list[str]]:
     target = load_corpus(
         cfg.data.domain, "target", cfg.data.target_corpus,
         cfg.data.max_target_docs, cfg.data.max_chars, cfg.data.seed,
+        cfg.data.target_corpus_repo,
     )
     retain = load_corpus(
         cfg.data.domain, "retain", cfg.data.retain_corpus,
         cfg.data.max_retain_docs, cfg.data.max_chars, cfg.data.seed,
+        cfg.data.retain_corpus_repo,
     )
     coherence = load_coherence_set(cfg.data.domain, cfg.data.coherence_path)
     return target, retain, coherence

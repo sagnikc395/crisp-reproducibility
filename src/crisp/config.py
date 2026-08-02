@@ -62,8 +62,12 @@ class SAEConfig:
 @dataclass
 class DataConfig:
     domain: str = "bio"  # bio | cyber
-    target_corpus: str | None = None  # HF name or local .jsonl/.txt path
+    target_corpus: str | None = None  # local .jsonl/.json/.txt path, overrides the HF repo
     retain_corpus: str | None = None
+    #: HF dataset repo to pull the corpus from, overriding the WMDP default
+    #: (``cais/wmdp-bio-forget-corpus`` for bio target, ``cais/wmdp-corpora`` otherwise).
+    target_corpus_repo: str | None = None
+    retain_corpus_repo: str | None = None
     max_target_docs: int = 5000
     max_retain_docs: int = 5000
     max_chars: int = 1000
