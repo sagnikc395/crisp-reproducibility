@@ -213,3 +213,9 @@ src/crisp/
   baselines/        RMU, ELM
   cli.py            python -m crisp <select|train|eval|baseline|sweep>
 ```
+
+
+## References:
+
+1. https://arxiv.org/pdf/2410.19278#page=12.18
+2. https://arxiv.org/abs/2508.13650
