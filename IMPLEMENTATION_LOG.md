@@ -58,34 +58,21 @@ What that commit established, in dependency order:
 | `eval_mcq.py` / `eval_gen.py` / `evaluate.py` / `metrics.py` | WMDP + MMLU accuracy, greedy generation + LLM-rater fluency/concept, the full harness, Eq. 12. |
 | `baselines/rmu.py`, `baselines/elm.py` | The two comparison methods from Table 1. |
 | `sweep.py` | Appendix F hyperparameter search (Optuna TPE if installed, random search otherwise). |
-| `cli.py` | `python -m crisp <select\|train\|eval\|baseline\|sweep>`. |
+| `cli.py` | `python -m crisp <fetch\|select\|train\|eval\|baseline\|sweep\|report\|plots>`. |
 
 Plus `configs/` with the paper's best-found hyperparameters per (model, domain),
 `data/coherence/` (Appendix D, 20 sentences/domain), `data/prompts/` (Appendix E,
 100 prefixes/domain), and `data/smoke/` (tiny corpora so the pipeline can be
 exercised offline with no gated downloads).
 
-### `309f0ba` — MLX inference backend
+### `309f0ba` — MLX inference backend (removed 2026-08-07)
 
-Added an **evaluation-only** second backend so MCQ scoring and generation run on
-Apple-silicon GPUs via `mlx-lm` instead of torch/MPS (much faster; 4-bit Gemma-2-2B
-is ~1.5 GB). `select`/`train`/`baseline`/`sweep` explicitly refuse to run under
-`backend: mlx` — CRISP differentiates through per-layer residual activations, and
-`mlx-lm` exposes neither forward hooks nor that autograd surface.
-
-Two things this forced (both documented at the top of `mlx_backend.py`):
-
-- MCQ batches are **right**-padded here, versus left-padded on the torch path.
-  `mlx-lm` builds its own causal mask and accepts no attention mask, so a padding
-  mask can't be supplied. Under causal attention a *trailing* pad cannot reach an
-  earlier real token, so right padding is exact; left padding would leak pad
-  positions into every query.
-- The backbone and the LM head are invoked separately, because Gemma's 256k-row
-  logit matrix over a padded `[B, L]` batch is several GB and only the final real
-  position is ever used.
-
-The dispatch is duck-typed: `eval_mcq` checks for `final_logits`, `eval_gen`
-checks for `generate_texts`. Nothing else in the pipeline knows a backend exists.
+An evaluation-only `mlx-lm` backend for running MCQ scoring and generation on
+Apple-silicon GPUs. Deleted when the workflow moved to Colab (see the 2026-08-07
+entry): it could never train — CRISP differentiates through per-layer residual
+activations and `mlx-lm` exposes neither forward hooks nor that autograd surface —
+so once training left the laptop, the backend was maintaining a second, quantised,
+inference-only code path that nothing reported from.
 
 ### `51468ac` — `EXPERIMENTATION_SETUP.md`
 
@@ -120,6 +107,42 @@ code path. Bio-forget itself returns `GatedRepoError` — access has to be reque
 on the dataset page and a valid `HF_TOKEN` exported. (The token currently stored
 on this machine is invalid; `hf auth login --force` fixes that.)
 
+### 2026-08-07 — everything heavy moves to Colab
+
+The laptop is an M4 with no CUDA. Gemma-2-2B in fp32 on MPS trains, but a full
+four-stage run is several hours, and none of the reported numbers should come off
+a quantised or MPS code path anyway. So the split is now explicit:
+
+| Where | What |
+| --- | --- |
+| Laptop | `python -m crisp fetch`, `pytest`, `configs/smoke.yaml` |
+| Colab (CUDA) | selection, CRISP training, RMU/ELM, evaluation, figures |
+| This repo | `artifacts/results/{README.md,summary.json}` and `artifacts/figures/*.png`, pushed from the notebook |
+
+Changes:
+
+- **MLX removed** — `mlx_backend.py`, both `*_mlx.yaml` configs, the `mlx` extra,
+  `model.backend` / `model.mlx_name`, the `--backend` flag, and the two duck-typed
+  dispatch hooks in `eval_mcq.py` / `eval_gen.py`. There is one inference path
+  again.
+- **`reproduce.sh` is GPU-first.** The `--local` MPS preset is gone; the script now
+  detects the card and picks bf16 on Ampere and newer, fp32 on a T4 (no gradient
+  scaler here, so fp16 would give silent NaNs rather than a clean OOM). New
+  `--full-mmlu` (the general-MMLU subsampling is on by default) and `--no-fetch`
+  (for a `data/` mounted from Drive rather than re-downloaded).
+- **`plots.py` + `crisp plots`.** Figures are built from the same result JSONs
+  `report.py` aggregates, so a figure cannot disagree with the table. Three kinds:
+  per-method metric bars, the forget/retain trade-off scatter (WMDP vs in-domain
+  MMLU — the shape of the paper's actual claim), and per-run training curves with
+  the Eq. 11 terms broken out.
+- **The notebook does the round trip.** Clones with a fine-grained GitHub token
+  (Contents: read/write), keeps the token out of `.git/config` by resetting the
+  remote after cloning, runs `reproduce.sh`, renders the table and figures inline,
+  and commits `artifacts/results` + `artifacts/figures` back to `main`.
+- **Drive:** `data/` is symlinked into Drive (gitignored, and the corpora are
+  large), but `artifacts/` is *copied* both ways — git refuses to stage paths that
+  sit behind a symlink, and the notebook has to commit from that directory.
+
 ---
 
 ## 2. What actually happens when you run `python -m crisp train`
@@ -133,8 +156,9 @@ downstream code reads `cfg`, never the environment.
 
 ### Step 2 — model + SAEs (`model.py::load_model_and_tokenizer`, `sae.py::load_saes`)
 
-Device/dtype resolution is deliberate: **CUDA → bf16, MPS/CPU → fp32**, because
-bf16 optimiser math is unreliable on MPS.
+Device/dtype resolution is deliberate: **CUDA (Ampere+) → bf16, everything else →
+fp32**. Training runs without a gradient scaler, so on a pre-Ampere card fp16 would
+give silent NaNs where fp32 gives a clean OOM.
 
 For each of the 6 suppressed layers (`model.sae_layers`, `[4,6,8,10,12,14]` for
 Gemma-2-2B), one pretrained SAE is downloaded and frozen. `sae.filename_template:
@@ -264,7 +288,7 @@ If a number looks off later, suspect these first.
 
 **Working and verified locally:**
 
-- All 32 unit tests pass in ~3s with no gated downloads. They check the equations
+- All 43 unit tests pass in ~3s with no gated downloads. They check the equations
   numerically against hand-computed values — Eq. 9 term by term, Eq. 10 reductions,
   Eq. 11 weighting, Eq. 12 harmonic mean, top-k/τ selection including the
   corpus-size normalisation, corpus cleaning, val/test splitting.
@@ -281,19 +305,22 @@ If a number looks off later, suspect these first.
   has been available in this environment, so no CRISP-vs-RMU/ELM comparison has
   been produced. The harness is finished; the experiments are not.
 - The bio half is additionally blocked on `cais/wmdp-bio-forget-corpus` access.
-- Llama-3.1-8B is a phase-2 stretch goal — it needs a rented GPU.
+- Llama-3.1-8B is a phase-2 stretch goal — it needs an A100, and is tight there.
 
 **Unblocking order:**
 
 1. `hf auth login --force` with a valid token (the stored one is invalid), and
    accept the `google/gemma-2-2b` licence.
-2. Run the **cyber** pair end-to-end — it needs no gated dataset:
-   `scripts/reproduce.sh configs/gemma2-2b_cyber.yaml`
-   (original model → CRISP → RMU → ELM, all four evaluated on the test split).
-3. Request `cais/wmdp-bio-forget-corpus` in parallel; when it lands, the bio
-   configs already point at it, so the same command with
-   `configs/gemma2-2b_bio.yaml` just works.
-4. Compare against Table 1. `EXPERIMENTATION_SETUP.md` has the target numbers and
+2. Fetch the datasets on the laptop (`python -m crisp fetch --domain cyber`) and
+   upload `data/` to `MyDrive/crisp/data`.
+3. Open `notebooks/crisp_colab.ipynb` on an L4 and run the **cyber** pair
+   end-to-end — it needs no gated dataset. The notebook calls
+   `scripts/reproduce.sh configs/gemma2-2b_cyber.yaml` (original → CRISP → RMU →
+   ELM, all evaluated on the test split) and pushes the results back here.
+4. Request `cais/wmdp-bio-forget-corpus` in parallel; when it lands, the bio
+   configs already point at it, so the same run with `configs/gemma2-2b_bio.yaml`
+   just works.
+5. Compare against Table 1. `EXPERIMENTATION_SETUP.md` has the target numbers and
    the pass/fail criteria.
 
 ---

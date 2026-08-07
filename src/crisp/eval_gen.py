@@ -53,10 +53,6 @@ def generate_continuations(
     batch_size: int = 8,
 ) -> list[Generation]:
     """Greedy decoding, max 50 new tokens (Appendix E.2)."""
-    if hasattr(model, "generate_texts"):  # MLX backend, batches internally
-        texts = model.generate_texts(prefixes, max_new_tokens)
-        return [Generation(p, t) for p, t in zip(prefixes, texts)]
-
     outputs: list[Generation] = []
     original_side = tokenizer.padding_side
     tokenizer.padding_side = "left"

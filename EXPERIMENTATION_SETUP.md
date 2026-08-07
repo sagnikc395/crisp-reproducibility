@@ -24,7 +24,7 @@ the Gemma-2-2B rows of Table 3 (Harry Potter).
 
 | Constraint | Implication |
 |---|---|
-| Local machine is Apple M4, 24 GB unified memory, no CUDA | Gemma-2-2B + 16k SAE runs on MPS but slowly; Llama-3.1-8B is not practical locally. Real runs = rented GPU. |
+| Local machine is Apple M4, 24 GB unified memory, no CUDA | All training and evaluation runs on Google Colab (`notebooks/crisp_colab.ipynb`, L4 recommended); the laptop only fetches the datasets and runs the tests. |
 | Released code is **partial** | `/crisp` has feature selection + LoRA optimization + eval; a runnable HP demo notebook. WMDP is **not** a turnkey script and the corpora need separate access. |
 | Project pins Python 3.13 + `uv` | Paper ships `environment.yml` (conda) with an older torch/SAELens stack. **Drop to Python 3.11** — SAELens + torch pins are unlikely to resolve on 3.13. |
 | Eval uses an LLM judge pinned to Claude Sonnet 4 `2025-05-14` | That version is no longer callable. Substitute a current model and **calibrate against the original-model baselines** — your Fluency/Concept numbers won't be directly comparable to the paper's otherwise. |
@@ -44,8 +44,7 @@ the Gemma-2-2B rows of Table 3 (Harry Potter).
 2. **Run the Harry Potter demo end-to-end on Gemma-2-2B.** Only path where the authors'
    code, a public dataset, and a small model all line up. Validates the environment against
    a published number — **Table 3, Gemma-2-2B: CRISP overall 49.30, unlearn acc 25.65**.
-   If you can't hit that, nothing downstream is trustworthy. Feasible on the M4 overnight,
-   or ~1 hour on free Kaggle T4s.
+   If you can't hit that, nothing downstream is trustworthy. ~1 hour on a Colab T4.
 
 ---
 

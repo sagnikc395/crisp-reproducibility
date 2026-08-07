@@ -9,10 +9,15 @@ __pycache__/
 data/wmdp/
 data/mcq/
 
-# Run artifacts. Only the result tables are tracked.
+# Run artifacts. Only the result tables and figures are tracked -- those are
+# what a Colab run commits back to this repo; adapters and caches stay out.
 outputs/
 artifacts/*
 !artifacts/results/
 artifacts/results/*
 !artifacts/results/README.md
 !artifacts/results/summary.json
+!artifacts/figures/
+artifacts/figures/*
+!artifacts/figures/README.md
+!artifacts/figures/*.png

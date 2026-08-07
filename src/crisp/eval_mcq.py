@@ -31,8 +31,6 @@ def _letter_token_ids(tokenizer) -> list[int]:
 
 def _final_logits(model, tokenizer, prompts, device, max_len: int) -> torch.Tensor:
     """Next-token logits at the last real position, one row per prompt."""
-    if hasattr(model, "final_logits"):  # MLX backend, owns its own padding
-        return model.final_logits(prompts, max_len)
     batch = tokenizer(
         prompts, return_tensors="pt", padding=True, truncation=True, max_length=max_len
     )

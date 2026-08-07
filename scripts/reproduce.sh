@@ -1,17 +1,23 @@
 #!/usr/bin/env bash
 # One command to reproduce Table 1 of the CRISP paper for a (model, domain) pair.
 #
-# It fetches the datasets into data/, evaluates the original model, trains CRISP
-# and both baselines, and aggregates everything into artifacts/results/.
+# It evaluates the original model, trains CRISP and both baselines, aggregates
+# everything into artifacts/results/ and renders artifacts/figures/.
 #
-#   scripts/reproduce.sh configs/gemma2-2b_bio.yaml --local   # M-series Mac
-#   scripts/reproduce.sh configs/gemma2-2b_bio.yaml           # full paper scale
-#   scripts/reproduce.sh configs/smoke.yaml --local           # 1-minute sanity run
+# This runs on a CUDA GPU -- in practice the Colab notebook
+# (notebooks/crisp_colab.ipynb), which calls exactly this script. Locally the
+# only thing worth running is the dataset fetch (`python -m crisp fetch`) and
+# the smoke config.
+#
+#   scripts/reproduce.sh configs/gemma2-2b_bio.yaml        # full run on a GPU
+#   scripts/reproduce.sh configs/smoke.yaml                # 1-minute sanity run, CPU is fine
 #
 # Flags handled here (everything else is forwarded to `crisp`):
-#   --local    Apple-silicon preset: MPS + float32, subsampled full-MMLU column
-#   --fresh    re-run stages whose results already exist (default: resume)
-#   --stages   comma-separated subset of original,crisp,rmu,elm
+#   --full-mmlu  keep the ~14k-question general-MMLU column at full size
+#                (default: 2 questions/subject, all 57 subjects represented)
+#   --no-fetch   assume data/ is already populated (e.g. mounted from Drive)
+#   --fresh      re-run stages whose results already exist (default: resume)
+#   --stages     comma-separated subset of original,crisp,rmu,elm
 #
 # Credentials come from .env at the repo root (HF_TOKEN for the gated Gemma
 # weights and bio forget corpus). The fluency/concept columns are scored by a
@@ -25,22 +31,24 @@ PY="${PY:-${ROOT}/.venv/bin/python}"
 [ -x "${PY}" ] || PY="python3"
 
 CONFIG=""
-LOCAL=0
+FULL_MMLU=0
+NO_FETCH=0
 FRESH=0
 STAGES="original,crisp,rmu,elm"
 PASSTHROUGH=()
 
 while [ $# -gt 0 ]; do
   case "$1" in
-    --local)  LOCAL=1; shift ;;
-    --fresh)  FRESH=1; shift ;;
-    --stages) STAGES="${2:?--stages needs a value}"; shift 2 ;;
-    -h|--help) sed -n '2,20p' "${BASH_SOURCE[0]}"; exit 0 ;;
+    --full-mmlu) FULL_MMLU=1; shift ;;
+    --no-fetch)  NO_FETCH=1; shift ;;
+    --fresh)     FRESH=1; shift ;;
+    --stages)    STAGES="${2:?--stages needs a value}"; shift 2 ;;
+    -h|--help) sed -n '2,25p' "${BASH_SOURCE[0]}"; exit 0 ;;
     *.yaml|*.yml) CONFIG="$1"; shift ;;
     *) PASSTHROUGH+=("$1"); shift ;;
   esac
 done
-: "${CONFIG:?usage: scripts/reproduce.sh <config.yaml> [--local] [--fresh] [extra crisp args]}"
+: "${CONFIG:?usage: scripts/reproduce.sh <config.yaml> [--full-mmlu] [--fresh] [extra crisp args]}"
 [ -f "${CONFIG}" ] || { echo "no such config: ${CONFIG}" >&2; exit 1; }
 
 NAME="$(basename "${CONFIG}" .yaml)"
@@ -63,18 +71,33 @@ PYEOF
 )
 EOF
 
-# --- presets -----------------------------------------------------------------
+# --- device / cost presets ---------------------------------------------------
+# bf16 on Ampere and newer; float32 on pre-Ampere cards (a T4 has no native
+# bf16, and training here runs without a gradient scaler, so float16 would give
+# silent NaNs instead of a clean OOM). CPU falls back to float32 too.
 OVERRIDES=()
-if [ "${LOCAL}" = "1" ]; then
-  # Apple silicon: MPS with float32 (bf16 optimiser math is unreliable there).
-  # The full-MMLU utility column is 14k questions, which dominates every
-  # evaluation; 2 per subject keeps all 57 subjects represented at ~1% of the
-  # cost. WMDP and the in-domain MMLU columns stay at full size.
-  OVERRIDES+=(-o model.device=mps -o model.dtype=float32 -o eval.mmlu_max_per_subject=2)
-  # Safety net for any op Metal has not implemented; without it an unsupported
-  # kernel aborts the run outright instead of running on the CPU.
-  export PYTORCH_ENABLE_MPS_FALLBACK=1
-  echo "preset: --local (mps/float32, full-MMLU subsampled to 2 questions/subject)"
+eval "$("${PY}" - <<'PYEOF'
+import torch
+if torch.cuda.is_available():
+    major, _ = torch.cuda.get_device_capability(0)
+    dtype = "bfloat16" if major >= 8 else "float32"
+    name = torch.cuda.get_device_name(0)
+    vram = torch.cuda.get_device_properties(0).total_memory / 1e9
+    print(f'DEVICE=cuda; DTYPE={dtype}; GPU="{name} ({vram:.0f} GB, sm_{major}x)"')
+else:
+    print('DEVICE=cpu; DTYPE=float32; GPU="no CUDA device"')
+PYEOF
+)"
+OVERRIDES+=(-o "model.device=${DEVICE}" -o "model.dtype=${DTYPE}")
+echo "device: ${GPU} -> ${DEVICE}/${DTYPE}"
+
+if [ "${FULL_MMLU}" = "0" ]; then
+  # The general-MMLU utility column is 14k questions and otherwise dominates
+  # every stage. 2 per subject keeps all 57 subjects represented at ~1% of the
+  # cost. WMDP and the in-domain MMLU columns -- the ones the paper's claims
+  # rest on -- always stay at full size.
+  OVERRIDES+=(-o eval.mmlu_max_per_subject=2)
+  echo "general-MMLU column subsampled to 2 questions/subject (--full-mmlu to disable)"
 fi
 
 # ${arr[@]+...} keeps an empty array from tripping `set -u` on bash 3.2 (macOS).
@@ -101,8 +124,8 @@ skip_or_run() {
 }
 
 # --- preflight ---------------------------------------------------------------
-# Gated weights fail at download time, which on a laptop is several minutes into
-# a multi-hour run. Check access up front instead.
+# Gated weights fail at download time, which is several minutes into a
+# multi-hour run. Check access up front instead.
 "${PY}" - "${CONFIG}" <<'PYEOF' || exit 1
 import sys, yaml
 from crisp.utils import hf_token   # loads .env
@@ -125,12 +148,18 @@ print(f"preflight ok: {name or 'local model'}")
 PYEOF
 
 # --- 0. datasets -------------------------------------------------------------
-echo "=== datasets -> data/ ================================================="
-if [ "${HAS_LOCAL_CORPUS}" = "1" ]; then
-  echo "config pins a local corpus; fetching MCQ benchmarks only"
-  "${PY}" -m crisp fetch --domain "${DOMAIN}" --skip-corpora
+# Normally fetched once on the laptop and carried up (Drive, or a re-fetch here);
+# `crisp fetch` is a no-op for files already on disk, so this is cheap either way.
+if [ "${NO_FETCH}" = "1" ]; then
+  echo "=== datasets: --no-fetch, using what is already in data/ ==============="
 else
-  "${PY}" -m crisp fetch --domain "${DOMAIN}"
+  echo "=== datasets -> data/ ================================================="
+  if [ "${HAS_LOCAL_CORPUS}" = "1" ]; then
+    echo "config pins a local corpus; fetching MCQ benchmarks only"
+    "${PY}" -m crisp fetch --domain "${DOMAIN}" --skip-corpora
+  else
+    "${PY}" -m crisp fetch --domain "${DOMAIN}"
+  fi
 fi
 
 # --- 1-4. the four models ----------------------------------------------------
@@ -154,7 +183,9 @@ if wants elm; then
   skip_or_run "${NAME}_elm" run_crisp baseline -c "${CONFIG}" --method elm --run-name "${NAME}"
 fi
 
-# --- 5. table ----------------------------------------------------------------
+# --- 5. table and figures ----------------------------------------------------
 echo "=== results ==========================================================="
 "${PY}" -m crisp report
+"${PY}" -m crisp plots
 echo "artifacts/results/: one JSON per run, plus summary.json and README.md"
+echo "artifacts/figures/: metric bars, forget/retain trade-off, training curves"

@@ -19,12 +19,6 @@ class ModelConfig:
     name: str = "google/gemma-2-2b"
     device: str = "auto"
     dtype: str = "auto"
-    #: ``torch`` | ``mlx``. The MLX backend is inference-only (``crisp eval``);
-    #: selection and training always run on torch.
-    backend: str = "torch"
-    #: MLX checkpoint to evaluate; defaults to a known mlx-community mirror of
-    #: ``name`` (see ``mlx_backend.DEFAULT_MLX_REPOS``).
-    mlx_name: str | None = None
     # Layers whose residual stream is read by an SAE and suppressed (Appendix F).
     sae_layers: list[int] = field(default_factory=lambda: [4, 6, 8, 10, 12, 14])
     # Transformer blocks that receive LoRA adapters ("early optimization layers", [3-9]).

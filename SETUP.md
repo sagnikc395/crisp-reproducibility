@@ -63,8 +63,11 @@ is not a turnkey script there.
   ELM (reimplemented from prose).
 - A **hyperparameter sweep** over the Appendix F space with the paper's
   geometric-mean selection criterion.
-- An **MLX inference backend** for fast local evaluation on Apple silicon.
-- 32 tests that run in ~3s with no gated downloads, plus an end-to-end integration
+- A **Colab notebook** that runs the whole pipeline on a CUDA GPU and commits the
+  results table and figures straight back to this repo.
+- **Figures** (`crisp plots`): per-method metric bars, the forget/retain trade-off,
+  and training-loss curves, all rendered from the same result JSONs as the table.
+- 43 tests that run in ~3s with no gated downloads, plus an end-to-end integration
   test on a tiny random Llama.
 - Configs carrying the paper's best-found hyperparameters for all four
   (model, domain) pairs.
@@ -123,12 +126,14 @@ exists yet. The harness is finished; the experiments are not. See §6.
 | Module | What it does | Why it exists / why you'd open it |
 | --- | --- | --- |
 | `src/crisp/config.py` | One dataclass per section, YAML loading, `section.field=value` CLI overrides. | Unknown keys **raise** rather than being silently ignored — a config typo becomes a failed run, not a quietly wrong number. Every default is traceable to Appendix F. |
-| `src/crisp/cli.py` | `python -m crisp <select\|train\|eval\|baseline\|sweep>`. | The entry point; also where the shared corpus/feature-cache helpers live. |
-| `src/crisp/mlx_backend.py` | Evaluation-only `mlx-lm` backend for Apple silicon; duck-types the slice of the HF API that `eval` uses. | Much faster than torch/MPS locally, and 4-bit Gemma-2-2B fits in ~1.5 GB. Inference only — CRISP needs gradients through per-layer activations, which `mlx-lm` doesn't expose. Its docstring explains the right-padding and split-LM-head decisions. |
-| `src/crisp/utils.py` | Devices, dtypes, seeding, batching, logging, HF token. | Note the deliberate choice: CUDA → bf16, MPS/CPU → fp32 (bf16 optimiser math is unreliable on MPS). |
+| `src/crisp/cli.py` | `python -m crisp <fetch\|select\|train\|eval\|baseline\|sweep\|report\|plots>`. | The entry point; also where the shared corpus/feature-cache helpers live. |
+| `src/crisp/report.py` | Aggregates `artifacts/results/*.json` into `summary.json` and the Table 1 markdown. | The single source of truth for every reported number. |
+| `src/crisp/plots.py` | Figures into `artifacts/figures/`: metric bars per method, the forget/retain trade-off scatter, training-loss curves. | Reads the same JSONs `report.py` does, so a figure can never disagree with the table. |
+| `src/crisp/utils.py` | Devices, dtypes, seeding, batching, logging, HF token. | Note the deliberate choice: CUDA → bf16, CPU → fp32. |
 | `configs/*.yaml` | The paper's best hyperparameters per (model, domain), plus `smoke.yaml`. | Never edit these to experiment — use `-o` overrides so the paper's settings stay pristine. |
-| `scripts/reproduce.sh` | Original model → CRISP → RMU → ELM, all evaluated. | One command produces a complete Table 1 comparison for one config. |
-| `tests/` | 32 tests: equations against hand-computed values, config parsing, dataset routing, plus an end-to-end integration run on a tiny random Llama. | ~3s, no gated downloads. If these pass, any failure is data/model access, not code. |
+| `scripts/reproduce.sh` | Original model → CRISP → RMU → ELM, all evaluated, then table + figures. | One command produces a complete Table 1 comparison for one config. Picks the dtype for the GPU it finds; resumable stage by stage. |
+| `notebooks/crisp_colab.ipynb` | The Colab runner: clone with a GitHub token, mount Drive, run `reproduce.sh`, show the table and figures, push the results back. | Training and evaluation happen here, not on a laptop. |
+| `tests/` | 43 tests: equations against hand-computed values, config parsing, dataset routing, plus an end-to-end integration run on a tiny random Llama. | ~3s, no gated downloads. If these pass, any failure is data/model access, not code. |
 
 ---
 
@@ -137,8 +142,10 @@ exists yet. The harness is finished; the experiments are not. See §6.
 ```bash
 uv sync --extra dev            # core + pytest
 uv sync --extra sweep          # + optuna
-uv sync --extra mlx            # + mlx-lm, Apple-silicon eval backend
 ```
+
+Locally this is only needed for the tests and `crisp fetch` — training and
+evaluation run on Colab (§5).
 
 Python **3.13** (`pyproject.toml` requires `>=3.13`; tests pass on 3.13.7).
 
@@ -169,7 +176,11 @@ If `hf auth whoami` reports an invalid token, run `hf auth login --force`.
 python -m pytest tests/ -q
 python -m crisp train -c configs/smoke.yaml --no-eval
 
-# The real thing, one config: original model + CRISP + RMU + ELM, all evaluated
+# On your laptop: materialise the datasets, then upload data/ to MyDrive/crisp/data
+python -m crisp fetch --domain cyber
+
+# The real thing runs on a CUDA GPU (in practice notebooks/crisp_colab.ipynb,
+# which calls exactly this): original model + CRISP + RMU + ELM, all evaluated
 scripts/reproduce.sh configs/gemma2-2b_cyber.yaml
 
 # Or the stages individually
@@ -178,8 +189,9 @@ python -m crisp train  -c configs/gemma2-2b_cyber.yaml    # select → train →
 python -m crisp eval   -c configs/gemma2-2b_cyber.yaml    # untouched model
 python -m crisp eval   -c configs/gemma2-2b_cyber.yaml --adapter outputs/runs/gemma2-2b_cyber/adapter
 
-# Fast local eval on Apple silicon
-python -m crisp eval -c configs/gemma2-2b_cyber_mlx.yaml --no-judge
+# Rebuild the table and the figures from whatever is in artifacts/results
+python -m crisp report
+python -m crisp plots
 ```
 
 Override any config field inline rather than editing the YAML:
