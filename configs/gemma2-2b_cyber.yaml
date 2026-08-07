@@ -39,3 +39,6 @@ eval:
   split: test
   mcq_batch_size: 4
   gen_max_new_tokens: 50
+  # See gemma2-2b_bio.yaml -- the rater is the wall-clock bottleneck and
+  # batches widely for free on a 24 GB card.
+  judge_batch_size: 16

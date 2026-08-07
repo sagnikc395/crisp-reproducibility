@@ -42,3 +42,10 @@ eval:
   split: test
   mcq_batch_size: 4
   gen_max_new_tokens: 50
+  # The rater dominates the wall clock: 100 prefixes x 2 passes, and a Thinking
+  # checkpoint spends most of its 2048-token budget before emitting the rating.
+  # Decoding a 4B model is bandwidth-bound, so a wider batch costs almost
+  # nothing per step and divides the batch count instead. 16 puts the KV cache
+  # at ~5 GB on top of ~8 GB of weights -- comfortable on a 24 GB card, drop to
+  # 4 if the rater OOMs on something smaller.
+  judge_batch_size: 16

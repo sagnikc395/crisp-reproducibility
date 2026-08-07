@@ -34,3 +34,12 @@ train:
   lora_rank: 4
   lambda_scale: 30.0
   save_dir: artifacts/runs_smoke
+
+# There is no eval block on purpose: the smoke model has random weights, so its
+# fluency/concept scores are noise either way. Always pass --no-judge here --
+# without it the run downloads an 8 GB rater and spends ~100 minutes scoring
+# gibberish, which is the slowest possible way to learn the pipeline is wired
+# up. The judge path gets its real exercise from the gemma2-2b configs.
+eval:
+  mmlu_max_per_subject: 2
+  judge_batch_size: 16
