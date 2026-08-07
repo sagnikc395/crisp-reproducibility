@@ -12,13 +12,13 @@
     "source": "cais/wmdp-bio-forget-corpus"
   },
   "corpus/cyber_retain": {
-    "cached": false,
+    "cached": true,
     "path": "data/wmdp/cyber_retain.jsonl",
-    "rows": 4473,
+    "rows": 4472,
     "source": "cais/wmdp-corpora:cyber-retain-corpus"
   },
   "corpus/cyber_target": {
-    "cached": false,
+    "cached": true,
     "path": "data/wmdp/cyber_target.jsonl",
     "rows": 1000,
     "source": "cais/wmdp-corpora:cyber-forget-corpus"
@@ -36,7 +36,7 @@
     "source": "cais/mmlu:college_biology"
   },
   "mcq/mmlu-college_computer_science": {
-    "cached": false,
+    "cached": true,
     "path": "data/mcq/mmlu-college_computer_science.jsonl",
     "rows": 100,
     "source": "cais/mmlu:college_computer_science"
@@ -48,7 +48,7 @@
     "source": "cais/mmlu:high_school_biology"
   },
   "mcq/mmlu-high_school_computer_science": {
-    "cached": false,
+    "cached": true,
     "path": "data/mcq/mmlu-high_school_computer_science.jsonl",
     "rows": 100,
     "source": "cais/mmlu:high_school_computer_science"
@@ -60,7 +60,7 @@
     "source": "cais/wmdp:wmdp-bio"
   },
   "mcq/wmdp-cyber": {
-    "cached": false,
+    "cached": true,
     "path": "data/mcq/wmdp-cyber.jsonl",
     "rows": 1987,
     "source": "cais/wmdp:wmdp-cyber"
