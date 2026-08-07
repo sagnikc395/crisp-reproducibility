@@ -1,0 +1,68 @@
+{
+  "corpus/bio_retain": {
+    "cached": true,
+    "path": "data/wmdp/bio_retain.jsonl",
+    "rows": 60887,
+    "source": "cais/wmdp-corpora:bio-retain-corpus"
+  },
+  "corpus/bio_target": {
+    "cached": true,
+    "path": "data/wmdp/bio_target.jsonl",
+    "rows": 24453,
+    "source": "cais/wmdp-bio-forget-corpus"
+  },
+  "corpus/cyber_retain": {
+    "cached": false,
+    "path": "data/wmdp/cyber_retain.jsonl",
+    "rows": 4473,
+    "source": "cais/wmdp-corpora:cyber-retain-corpus"
+  },
+  "corpus/cyber_target": {
+    "cached": false,
+    "path": "data/wmdp/cyber_target.jsonl",
+    "rows": 1000,
+    "source": "cais/wmdp-corpora:cyber-forget-corpus"
+  },
+  "mcq/mmlu-all": {
+    "cached": true,
+    "path": "data/mcq/mmlu-all.jsonl",
+    "rows": 14042,
+    "source": "cais/mmlu:all"
+  },
+  "mcq/mmlu-college_biology": {
+    "cached": true,
+    "path": "data/mcq/mmlu-college_biology.jsonl",
+    "rows": 144,
+    "source": "cais/mmlu:college_biology"
+  },
+  "mcq/mmlu-college_computer_science": {
+    "cached": false,
+    "path": "data/mcq/mmlu-college_computer_science.jsonl",
+    "rows": 100,
+    "source": "cais/mmlu:college_computer_science"
+  },
+  "mcq/mmlu-high_school_biology": {
+    "cached": true,
+    "path": "data/mcq/mmlu-high_school_biology.jsonl",
+    "rows": 310,
+    "source": "cais/mmlu:high_school_biology"
+  },
+  "mcq/mmlu-high_school_computer_science": {
+    "cached": false,
+    "path": "data/mcq/mmlu-high_school_computer_science.jsonl",
+    "rows": 100,
+    "source": "cais/mmlu:high_school_computer_science"
+  },
+  "mcq/wmdp-bio": {
+    "cached": true,
+    "path": "data/mcq/wmdp-bio.jsonl",
+    "rows": 1273,
+    "source": "cais/wmdp:wmdp-bio"
+  },
+  "mcq/wmdp-cyber": {
+    "cached": false,
+    "path": "data/mcq/wmdp-cyber.jsonl",
+    "rows": 1987,
+    "source": "cais/wmdp:wmdp-cyber"
+  }
+}

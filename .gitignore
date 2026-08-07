@@ -1,6 +1,18 @@
-outputs/
 __pycache__/
 *.pyc
 .pytest_cache/
 .venv
 .env
+
+# Datasets materialised by `crisp fetch`. Not redistributable (the WMDP bio
+# forget corpus is gated); the manifest records what was fetched.
+data/wmdp/
+data/mcq/
+
+# Run artifacts. Only the result tables are tracked.
+outputs/
+artifacts/*
+!artifacts/results/
+artifacts/results/*
+!artifacts/results/README.md
+!artifacts/results/summary.json

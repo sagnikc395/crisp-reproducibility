@@ -111,7 +111,7 @@ def _run_trial(base_cfg: Config, params: dict, baseline: dict) -> dict:
     return {"params": params, "metrics": metrics, "score": score}
 
 
-def run_sweep(cfg: Config, n_trials: int = 20, out_dir: str = "outputs/sweeps") -> list[dict]:
+def run_sweep(cfg: Config, n_trials: int = 20, out_dir: str = "artifacts/sweeps") -> list[dict]:
     out = Path(out_dir) / cfg.run_name
     out.mkdir(parents=True, exist_ok=True)
 

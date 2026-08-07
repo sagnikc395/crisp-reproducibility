@@ -242,15 +242,18 @@ def test_bio_forget_corpus_comes_from_its_own_repo():
         assert repo == WMDP_CORPORA_REPO and config_name
 
 
-def test_bio_configs_pin_the_forget_corpus_repo():
+def test_bio_configs_leave_corpus_resolution_to_the_data_dir():
+    """Bio configs must not pin a corpus repo: an override disables the
+    data/wmdp cache that `crisp fetch` fills, forcing a Hub download per run."""
     from pathlib import Path
 
-    from crisp.data import WMDP_BIO_FORGET_REPO
-
     root = Path(__file__).resolve().parents[1] / "configs"
-    for path in sorted(root.glob("*_bio*.yaml")):
+    paths = sorted(root.glob("*_bio*.yaml"))
+    assert paths
+    for path in paths:
         cfg = Config.from_yaml(path)
-        assert cfg.data.target_corpus_repo == WMDP_BIO_FORGET_REPO, path.name
+        assert cfg.data.target_corpus_repo is None, path.name
+        assert cfg.data.retain_corpus_repo is None, path.name
 
 
 def test_shipped_assets_have_expected_sizes():

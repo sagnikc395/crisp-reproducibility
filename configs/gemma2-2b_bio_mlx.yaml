@@ -9,9 +9,9 @@ model:
 
 data:
   domain: bio
-  # Gated: request access on the dataset page and export HF_TOKEN.
-  target_corpus_repo: cais/wmdp-bio-forget-corpus
-  retain_corpus_repo: cais/wmdp-corpora
+  # Corpora are read from data/wmdp/. Run `crisp fetch --domain bio` once to
+  # materialise them (the bio forget corpus is gated: request access, then put
+  # HF_TOKEN in .env).
   max_seq_len: 256
 
 eval:

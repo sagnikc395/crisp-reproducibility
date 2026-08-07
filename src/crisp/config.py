@@ -83,7 +83,7 @@ class SelectionConfig:
     epsilon: float = 1e-6
     max_docs: int = 500  # docs per corpus used for the activation statistics
     batch_size: int = 4
-    cache_dir: str = "outputs/features"
+    cache_dir: str = "artifacts/features"
 
 
 @dataclass
@@ -103,7 +103,7 @@ class TrainConfig:
     retain_reduction: str = "sqnorm"
     warmup_steps: int = 0
     log_every: int = 10
-    save_dir: str = "outputs/runs"
+    save_dir: str = "artifacts/runs"
     seed: int = 0
 
     @property

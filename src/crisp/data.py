@@ -8,9 +8,16 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from .utils import get_logger, hf_token
+from .utils import REPO_ROOT, get_logger, hf_token
 
 log = get_logger(__name__)
+
+#: Everything the pipeline reads lives under ``data/``. ``crisp fetch``
+#: materialises the Hugging Face corpora and MCQ benchmarks here once, after
+#: which every run is local (and therefore offline-reproducible).
+DATA_ROOT = REPO_ROOT / "data"
+CORPUS_DIR = DATA_ROOT / "wmdp"
+MCQ_DIR = DATA_ROOT / "mcq"
 
 # Most WMDP corpora ship as parquet configs of a single HF repo. The bio forget
 # corpus is not published there: it is gated and lives in its own repo with a
@@ -101,6 +108,35 @@ def _load_local(path: str | Path) -> list[str]:
     return [b for b in path.read_text(errors="ignore").split("\n\n") if b.strip()]
 
 
+def local_corpus_path(domain: str, role: str) -> Path:
+    """Where ``crisp fetch`` stores the raw corpus for ``<domain>/<role>``."""
+    return CORPUS_DIR / f"{domain}_{role}.jsonl"
+
+
+def local_mcq_path(name: str) -> Path:
+    """Where ``crisp fetch`` stores a materialised MCQ benchmark."""
+    return MCQ_DIR / f"{name}.jsonl"
+
+
+def write_jsonl(path: str | Path, rows: list[dict]) -> Path:
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", encoding="utf-8") as fh:
+        for row in rows:
+            fh.write(json.dumps(row, ensure_ascii=False) + "\n")
+    return path
+
+
+def _read_mcq_jsonl(path: str | Path) -> list[dict]:
+    rows = []
+    with open(path, encoding="utf-8") as fh:
+        for line in fh:
+            line = line.strip()
+            if line:
+                rows.append(json.loads(line))
+    return rows
+
+
 def _download_wmdp_corpus(key: str, repo_override: str | None = None) -> list[str]:
     from huggingface_hub import hf_hub_download
     from huggingface_hub.errors import HfHubHTTPError
@@ -152,9 +188,13 @@ def load_corpus(
 ) -> list[str]:
     """Load and preprocess one corpus. ``role`` is ``target`` or ``retain``."""
     key = f"{domain}_{role}"
+    cached = local_corpus_path(domain, role)
     if override_path:
         raw = _load_local(override_path)
         source = override_path
+    elif cached.is_file() and not repo_override:
+        raw = _load_local(cached)
+        source = str(cached)
     else:
         raw = _download_wmdp_corpus(key, repo_override)
         repo, config_name = WMDP_CORPUS_SOURCES[key]
@@ -206,22 +246,32 @@ def split_half(items: list[MCQItem], split: str, seed: int = 0) -> list[MCQItem]
     return [it for i, it in enumerate(items) if i in keep]
 
 
-def load_wmdp_mcq(domain: str, split: str = "test", seed: int = 0) -> list[MCQItem]:
+def _mcq_rows(name: str, repo: str, config: str) -> list[dict]:
+    """Rows for one MCQ benchmark, from ``data/mcq`` if fetched, else the Hub."""
+    cached = local_mcq_path(name)
+    if cached.is_file():
+        return _read_mcq_jsonl(cached)
+
     from datasets import load_dataset
 
-    ds = load_dataset("cais/wmdp", WMDP_MCQ_CONFIG[domain], split="test")
-    return split_half(_to_items(ds), split, seed)
+    ds = load_dataset(repo, config, split="test", token=hf_token())
+    log.info("loaded MCQ set %s from %s:%s (run `crisp fetch` to cache it under "
+             "data/mcq)", name, repo, config)
+    return [dict(row) for row in ds]
+
+
+def load_wmdp_mcq(domain: str, split: str = "test", seed: int = 0) -> list[MCQItem]:
+    rows = _mcq_rows(f"wmdp-{domain}", "cais/wmdp", WMDP_MCQ_CONFIG[domain])
+    return split_half(_to_items(rows), split, seed)
 
 
 def load_mmlu(
     subjects: list[str], split: str = "test", seed: int = 0, max_per_subject: int = 0
 ) -> list[MCQItem]:
-    from datasets import load_dataset
-
     items: list[MCQItem] = []
     for subject in subjects:
-        ds = load_dataset("cais/mmlu", subject, split="test")
-        subject_items = _to_items(ds)
+        rows = _mcq_rows(f"mmlu-{subject}", "cais/mmlu", subject)
+        subject_items = _to_items(rows)
         if max_per_subject:
             subject_items = subject_items[:max_per_subject]
         items.extend(split_half(subject_items, split, seed))
@@ -231,11 +281,9 @@ def load_mmlu(
 def load_mmlu_full(max_per_subject: int = 10, split: str = "all") -> list[MCQItem]:
     """Full-MMLU utility metric. The paper's hyperparameter selection uses the
     first 10 questions of each subject."""
-    from datasets import load_dataset
-
-    ds = load_dataset("cais/mmlu", "all", split="test")
+    rows = _mcq_rows("mmlu-all", "cais/mmlu", "all")
     by_subject: dict[str, list[MCQItem]] = {}
-    for row in ds:
+    for row in rows:
         subject = row.get("subject", "all")
         bucket = by_subject.setdefault(subject, [])
         if max_per_subject and len(bucket) >= max_per_subject:
@@ -248,12 +296,12 @@ def load_mmlu_full(max_per_subject: int = 10, split: str = "all") -> list[MCQIte
 def load_coherence_set(domain: str, path: str | None = None) -> list[str]:
     """20 benign, factual sentences per domain (Appendix D)."""
     if path is None:
-        path = Path(__file__).resolve().parents[2] / "data" / "coherence" / f"{domain}.json"
+        path = DATA_ROOT / "coherence" / f"{domain}.json"
     return json.loads(Path(path).read_text())
 
 
 def load_gen_prompts(domain: str, path: str | None = None) -> list[str]:
     """100 natural-language prefixes for fluency/concept scoring (Appendix E)."""
     if path is None:
-        path = Path(__file__).resolve().parents[2] / "data" / "prompts" / f"{domain}.json"
+        path = DATA_ROOT / "prompts" / f"{domain}.json"
     return json.loads(Path(path).read_text())

@@ -30,12 +30,102 @@ uv sync --extra dev            # add --extra judge for the LLM rater, --extra sw
 | --- | --- | --- |
 | `cais/wmdp` MCQs, `cais/mmlu` | public | nothing to do |
 | `cais/wmdp-corpora` cyber forget/retain, bio retain | public | nothing to do |
-| `cais/wmdp-bio-forget-corpus` (bio forget) | gated | request at the [dataset page](https://huggingface.co/datasets/cais/wmdp-bio-forget-corpus), then `export HF_TOKEN=…` (or pass `-o data.target_corpus=path/to/bio-forget.jsonl`) |
-| `google/gemma-2-2b`, `meta-llama/Llama-3.1-8B` | gated | accept the licence on the model page, then `export HF_TOKEN=…` |
+| `cais/wmdp-bio-forget-corpus` (bio forget) | gated | request at the [dataset page](https://huggingface.co/datasets/cais/wmdp-bio-forget-corpus), then set `HF_TOKEN` (or pass `-o data.target_corpus=path/to/bio-forget.jsonl`) |
+| `google/gemma-2-2b`, `meta-llama/Llama-3.1-8B` | gated | accept the licence on the model page, then set `HF_TOKEN` |
 | Gemma Scope SAEs | public | nothing to do |
-| Fluency / Concept scores | needs an LLM rater | `export ANTHROPIC_API_KEY=…` (or run with `--no-judge`) |
+| Fluency / Concept scores | needs an LLM rater | set `ANTHROPIC_API_KEY` (or run with `--no-judge`) |
 
-## Run
+Credentials are read from a `.env` file at the repo root, so a one-time
+
+```bash
+printf 'HF_TOKEN=hf_...\nANTHROPIC_API_KEY=sk-ant-...\n' > .env
+```
+
+is enough — no `export` needed. Real environment variables still take precedence.
+
+## Fetch the datasets
+
+Every corpus and benchmark is materialised under `data/` first; selection,
+training and evaluation then read from there, so a reproduction is pinned to the
+files on disk rather than to whatever the Hub serves that day.
+
+```bash
+python -m crisp fetch                  # both domains
+python -m crisp fetch --domain bio     # or just one
+```
+
+This writes `data/wmdp/{bio,cyber}_{target,retain}.jsonl`, `data/mcq/*.jsonl`
+and a `data/MANIFEST.json` recording the source repo and row count of each file.
+`scripts/reproduce.sh` calls it for you. The fetched data is gitignored (the bio
+forget corpus is gated and not redistributable).
+
+## Reproduce everything with one command
+
+```bash
+scripts/reproduce.sh configs/gemma2-2b_bio.yaml --local
+```
+
+That is the whole pipeline: fetch datasets → evaluate the original model → train
+CRISP → train RMU → train ELM → write the comparison table. Results land in
+`artifacts/results/` (one `<run>__<split>.json` per model, plus a regenerated
+`summary.json` and `README.md` table).
+
+`--local` is the Apple-silicon preset. It runs on MPS in float32 (bf16
+optimiser math is unreliable there) and subsamples the general-MMLU column to
+2 questions per subject — that column is 14k questions and otherwise dominates
+every evaluation, while all 57 subjects stay represented. The WMDP and
+in-domain-MMLU columns, the ones the paper's claims rest on, stay at full size.
+Drop `--local` for the full paper scale on a CUDA box.
+
+Other flags:
+
+| Flag | Effect |
+| --- | --- |
+| `--fresh` | re-run stages whose results already exist (default is to resume) |
+| `--stages original,crisp` | run only some of `original,crisp,rmu,elm` |
+| anything else | forwarded to `crisp` (e.g. `--skip-generation`, `-o train.steps=50`) |
+
+The run is resumable: each stage is skipped when its result file is already in
+`artifacts/results/`, so an interrupted run picks up where it stopped.
+
+Before committing to the full thing, check the plumbing in about a minute on a
+tiny random model that needs no gated downloads:
+
+```bash
+scripts/reproduce.sh configs/smoke.yaml --local
+```
+
+### Expect it to take a while on a laptop
+
+On an M-series MacBook, `--local` on `gemma2-2b_bio` is a couple of hours: the
+model is ~10 GB in float32, and each of the four stages evaluates ~950 MCQs on
+top of 200 training steps. `--stages original,crisp` gives you the headline
+CRISP-vs-original comparison in roughly half that.
+
+## Or run it on Google Colab
+
+[`notebooks/crisp_colab.ipynb`](notebooks/crisp_colab.ipynb) runs the same
+`scripts/reproduce.sh` pipeline on a CUDA GPU, for when the laptop route is too
+slow or too tight on memory. It clones the repo, reads `HF_TOKEN` /
+`ANTHROPIC_API_KEY` from Colab secrets into `.env`, installs the dependencies
+around Colab's preinstalled torch, picks a dtype for whatever GPU you were
+assigned, and renders the results table at the end. `CONFIG` and `STAGES` at the
+top of the notebook select the run.
+
+| Runtime | VRAM | What fits |
+| --- | --- | --- |
+| T4 (free) | ~15 GB | `smoke.yaml`; `gemma2-2b` eval, and training only tightly |
+| L4 (Pro) | ~22 GB | full `gemma2-2b_{bio,cyber}` in bf16 — the target to aim for |
+| A100 40 GB | 40 GB | as above comfortably; `llama31-8b` is possible but tight |
+
+Two things differ from a local run. T4 is pre-Ampere, so the notebook selects
+float32 rather than bf16 — training here has no gradient scaler, and float16
+would give silent NaNs instead of a clean OOM. And Colab disconnects, so an
+optional cell symlinks the HF cache, `data/` and `artifacts/` onto Drive; since
+each stage is skipped when its result JSON already exists, re-running the
+notebook then resumes rather than restarting.
+
+## Individual commands
 
 ```bash
 # Full pipeline: feature selection -> LoRA training -> test-split evaluation
@@ -46,7 +136,7 @@ python -m crisp select -c configs/gemma2-2b_bio.yaml
 
 # Evaluate the untouched model, or a saved adapter
 python -m crisp eval -c configs/gemma2-2b_cyber.yaml
-python -m crisp eval -c configs/gemma2-2b_cyber.yaml --adapter outputs/runs/gemma2-2b_cyber/adapter
+python -m crisp eval -c configs/gemma2-2b_cyber.yaml --adapter artifacts/runs/gemma2-2b_cyber/adapter
 
 # Baselines
 python -m crisp baseline -c configs/gemma2-2b_cyber.yaml --method rmu
@@ -55,8 +145,8 @@ python -m crisp baseline -c configs/gemma2-2b_cyber.yaml --method elm
 # Hyperparameter search on the validation split (Appendix F space)
 python -m crisp sweep -c configs/gemma2-2b_bio.yaml --trials 200
 
-# Everything for one config (original model + CRISP + both baselines)
-scripts/reproduce.sh configs/gemma2-2b_cyber.yaml
+# Rebuild artifacts/results/{summary.json,README.md} from the result JSONs
+python -m crisp report
 ```
 
 Any config field can be overridden inline:
@@ -179,15 +269,20 @@ tiny random Llama, and asserts the unlearning loss actually decreases.
 ## Verification status
 
 Verified locally: SAE loading against real Gemma Scope weights (layer 14,
-`d_sae=16384`, JumpReLU thresholds ≈3.8); WMDP-Cyber forget/retain corpora
-(995/4303 docs after cleaning), WMDP MCQs (994 test items after halving) and
-MMLU subject loading; end-to-end training, checkpointing and evaluation on a
-tiny model.
+`d_sae=16384`, JumpReLU thresholds ≈3.8); dataset fetch for both domains
+(bio 24453/60887, cyber 1000/4473 raw forget/retain docs; WMDP MCQs 1273/1987;
+MMLU 14042) into `data/`; `scripts/reproduce.sh` all the way through
+original → CRISP → RMU → ELM → results table, including the MPS code path.
 
-Not run here: the Table 1 numbers themselves. `google/gemma-2-2b` is gated and
-no `HF_TOKEN` was available in this environment, so no CRISP-vs-RMU/ELM
-comparison has been produced yet. Set `HF_TOKEN` and run `scripts/reproduce.sh`
-to generate them.
+Not run here: the Table 1 numbers themselves. The full-scale run has only been
+exercised on the tiny smoke model, so no CRISP-vs-RMU/ELM comparison on
+`gemma-2-2b` exists yet. Run
+
+```bash
+scripts/reproduce.sh configs/gemma2-2b_bio.yaml --local
+```
+
+to generate one; it will populate `artifacts/results/`.
 
 ## Layout
 
@@ -196,10 +291,17 @@ configs/            paper hyperparameters per (model, domain) + a smoke config
 data/coherence/     Appendix D coherence sets
 data/prompts/       Appendix E generation prefixes
 data/smoke/         tiny corpora for the offline pipeline check
-scripts/            reproduce.sh
+data/wmdp/          forget/retain corpora written by `crisp fetch` (gitignored)
+data/mcq/           WMDP + MMLU benchmarks written by `crisp fetch` (gitignored)
+data/MANIFEST.json  source repo and row count of every fetched file
+artifacts/results/  one JSON per evaluated model + summary.json + README.md table
+artifacts/runs/     adapters, training histories, selected features
+scripts/            reproduce.sh -- the one-command pipeline
 src/crisp/
   config.py         dataclass config + YAML/CLI overrides
   data.py           corpora, cleaning, WMDP/MMLU MCQs, coherence sets
+  fetch.py          materialises every dataset under data/
+  report.py         aggregates artifacts/results into the Table 1 comparison
   sae.py            SAE module + Gemma Scope / Llama Scope / sae_lens loaders
   model.py          model loading, residual capture, LoRA, frozen-reference ctx
   features.py       Eq. 3-8 contrastive feature selection
@@ -211,7 +313,7 @@ src/crisp/
   metrics.py        Eq. 12 and the Appendix F selection criterion
   sweep.py          hyperparameter search
   baselines/        RMU, ELM
-  cli.py            python -m crisp <select|train|eval|baseline|sweep>
+  cli.py            python -m crisp <fetch|select|train|eval|baseline|sweep|report>
 ```
 
 

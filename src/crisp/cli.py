@@ -13,11 +13,21 @@ from .data import load_coherence_set, load_corpus
 from .evaluate import evaluate_model, save_results, summarize
 from .features import SelectedFeatures, run_selection
 from .model import attach_lora, load_model_and_tokenizer
+from .report import result_path
 from .sae import load_saes
 from .train import save_run, train_crisp
-from .utils import get_logger, set_seed, setup_logging
+from .utils import get_logger, load_dotenv, set_seed, setup_logging
 
 log = get_logger(__name__)
+
+
+def _record(results: dict, run_name: str, cfg: Config) -> None:
+    """Persist one evaluation under artifacts/results and refresh the summary."""
+    from . import report
+
+    save_results(results, result_path(run_name, cfg.eval.split))
+    report.build()
+    print(summarize(results))
 
 
 def _load_config(args) -> Config:
@@ -99,15 +109,14 @@ def cmd_train(args) -> None:
     history = train_crisp(
         model, tokenizer, saes, features, target, retain, coherence, cfg, device
     )
-    out = save_run(model, tokenizer, cfg, features, history)
+    save_run(model, tokenizer, cfg, features, history)
 
     if not args.no_eval:
         results = evaluate_model(
             model, tokenizer, cfg, device,
             judge=not args.no_judge, skip_generation=args.skip_generation,
         )
-        save_results(results, out / f"eval_{cfg.eval.split}.json")
-        print(summarize(results))
+        _record(results, cfg.run_name, cfg)
 
 
 def cmd_eval(args) -> None:
@@ -131,9 +140,11 @@ def cmd_eval(args) -> None:
         model, tokenizer, cfg, device,
         judge=not args.no_judge, skip_generation=args.skip_generation,
     )
-    out = Path(args.out or f"outputs/eval/{cfg.run_name}_{cfg.eval.split}.json")
-    save_results(results, out)
-    print(summarize(results))
+    if args.out:
+        save_results(results, Path(args.out))
+        print(summarize(results))
+    else:
+        _record(results, cfg.run_name, cfg)
 
 
 def cmd_baseline(args) -> None:
@@ -164,7 +175,8 @@ def cmd_baseline(args) -> None:
             elm_cfg.__dict__.update(json.loads(args.baseline_json))
         history = train_elm(model, tokenizer, target, retain, elm_cfg, device)
 
-    out = Path(cfg.train.save_dir) / f"{cfg.run_name}_{args.method}"
+    run_name = f"{cfg.run_name}_{args.method}"
+    out = Path(cfg.train.save_dir) / run_name
     out.mkdir(parents=True, exist_ok=True)
     (out / "history.json").write_text(json.dumps(history, indent=2))
     if hasattr(model, "save_pretrained"):
@@ -175,8 +187,27 @@ def cmd_baseline(args) -> None:
             model, tokenizer, cfg, device,
             judge=not args.no_judge, skip_generation=args.skip_generation,
         )
-        save_results(results, out / f"eval_{cfg.eval.split}.json")
-        print(summarize(results))
+        _record(results, run_name, cfg)
+
+
+def cmd_fetch(args) -> None:
+    from .fetch import fetch_all
+
+    manifest = fetch_all(
+        domains=args.domain or None,
+        force=args.force,
+        skip_corpora=args.skip_corpora,
+        skip_mcq=args.skip_mcq,
+    )
+    for key, entry in sorted(manifest.items()):
+        print(f"{key:28s} {entry['rows']:>7d} rows  {entry['path']}")
+
+
+def cmd_report(args) -> None:
+    from . import report
+
+    summary = report.build(args.results_dir or report.RESULTS_DIR)
+    print(report.to_markdown(summary["runs"]))
 
 
 def cmd_sweep(args) -> None:
@@ -184,7 +215,7 @@ def cmd_sweep(args) -> None:
 
     cfg = _load_config(args)
     _require_torch(cfg, "sweep")
-    run_sweep(cfg, n_trials=args.trials, out_dir=args.out or "outputs/sweeps")
+    run_sweep(cfg, n_trials=args.trials, out_dir=args.out or "artifacts/sweeps")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -197,6 +228,19 @@ def build_parser() -> argparse.ArgumentParser:
         p.add_argument("-o", "--override", action="append", default=[],
                        help="section.field=value override (repeatable)")
         p.add_argument("--run-name")
+
+    p_fetch = sub.add_parser("fetch", help="download every dataset into data/")
+    p_fetch.add_argument("--domain", action="append", choices=["bio", "cyber"],
+                         help="restrict to one domain (repeatable; default: both)")
+    p_fetch.add_argument("--force", action="store_true", help="re-download existing files")
+    p_fetch.add_argument("--skip-corpora", action="store_true",
+                         help="skip the gated forget/retain corpora")
+    p_fetch.add_argument("--skip-mcq", action="store_true", help="skip WMDP/MMLU benchmarks")
+    p_fetch.set_defaults(func=cmd_fetch)
+
+    p_report = sub.add_parser("report", help="aggregate artifacts/results into a table")
+    p_report.add_argument("--results-dir")
+    p_report.set_defaults(func=cmd_report)
 
     p_select = sub.add_parser("select", help="run contrastive feature selection only")
     common(p_select)
@@ -241,6 +285,7 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> None:
     args = build_parser().parse_args(argv)
     setup_logging(args.log_level)
+    load_dotenv()  # HF_TOKEN / ANTHROPIC_API_KEY without a manual export
     torch.set_grad_enabled(True)
     args.func(args)
 

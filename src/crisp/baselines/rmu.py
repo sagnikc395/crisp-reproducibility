@@ -37,6 +37,19 @@ class RMUConfig:
         return max(self.layer_ids)
 
 
+def resolve_layer_ids(layer_ids: list[int], n_layers: int) -> list[int]:
+    """Fit RMU's update window inside a model that has fewer layers than the 7B
+    models the defaults were tuned on (the smoke model has two)."""
+    valid = sorted({i for i in layer_ids if 0 <= i < n_layers})
+    if len(valid) == len(set(layer_ids)):
+        return valid
+    width = min(len(set(layer_ids)), n_layers)
+    shifted = list(range(n_layers - width, n_layers))
+    log.warning("RMU layers %s do not fit a %d-layer model; using %s",
+                sorted(set(layer_ids)), n_layers, shifted)
+    return shifted
+
+
 def _trainable_params(model, layer_ids: list[int], suffix: str) -> list[torch.nn.Parameter]:
     wanted = {f".layers.{i}." for i in layer_ids}
     params = []
@@ -61,6 +74,7 @@ def train_rmu(
 ) -> dict:
     set_seed(cfg.seed)
     d_model = model.config.hidden_size
+    cfg.layer_ids = resolve_layer_ids(cfg.layer_ids, model.config.num_hidden_layers)
 
     # Fixed random unit control vector, scaled by the steering coefficient.
     generator = torch.Generator(device="cpu").manual_seed(cfg.seed)

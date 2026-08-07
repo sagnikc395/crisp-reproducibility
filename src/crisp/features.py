@@ -36,11 +36,18 @@ def corpus_statistics(
     device: torch.device,
     desc: str = "stats",
 ) -> dict[int, LayerStats]:
-    """Accumulate phi (Eq. 3) and A (Eq. 5) for every SAE feature and layer."""
+    """Accumulate phi (Eq. 3) and A (Eq. 5) for every SAE feature and layer.
+
+    The accumulators live on the CPU in float64: MPS has no float64 at all, and
+    summing hundreds of thousands of token activations in float32 loses counts
+    once the running total is large. Only a ``[d_sae]`` vector crosses the
+    device boundary per batch, so the transfer is negligible next to the forward
+    pass.
+    """
     stats = {
         layer: LayerStats(
-            count=torch.zeros(saes[layer].d_sae, dtype=torch.float64, device=device),
-            total=torch.zeros(saes[layer].d_sae, dtype=torch.float64, device=device),
+            count=torch.zeros(saes[layer].d_sae, dtype=torch.float64),
+            total=torch.zeros(saes[layer].d_sae, dtype=torch.float64),
             n_tokens=0,
         )
         for layer in saes.layers
@@ -54,8 +61,8 @@ def corpus_statistics(
             for layer in saes.layers:
                 hidden = capture.acts[layer][mask]  # [n_tokens, d_model]
                 acts = saes[layer].encode(hidden).float()
-                stats[layer].count += (acts > 0).sum(dim=0).double()
-                stats[layer].total += acts.sum(dim=0).double()
+                stats[layer].count += (acts > 0).sum(dim=0).cpu().double()
+                stats[layer].total += acts.sum(dim=0).cpu().double()
                 stats[layer].n_tokens += hidden.shape[0]
                 del acts, hidden
     return stats

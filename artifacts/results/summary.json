@@ -1,0 +1,69 @@
+{
+  "n_runs": 4,
+  "columns": [
+    "unlearn_acc",
+    "retain_acc",
+    "mmlu",
+    "fluency",
+    "concept",
+    "overall"
+  ],
+  "runs": [
+    {
+      "run": "smoke_original",
+      "method": "original",
+      "config": "smoke",
+      "domain": "bio",
+      "split": "test",
+      "source": "artifacts/results/smoke_original__test.json",
+      "unlearn_acc": 25.588697017268444,
+      "retain_acc": 21.58590308370044,
+      "mmlu": 28.94736842105263,
+      "fluency": null,
+      "concept": null,
+      "overall": null
+    },
+    {
+      "run": "smoke_crisp",
+      "method": "crisp",
+      "config": "smoke",
+      "domain": "bio",
+      "split": "test",
+      "source": "artifacts/results/smoke_crisp__test.json",
+      "unlearn_acc": 25.588697017268444,
+      "retain_acc": 21.58590308370044,
+      "mmlu": 28.94736842105263,
+      "fluency": null,
+      "concept": null,
+      "overall": null
+    },
+    {
+      "run": "smoke_rmu",
+      "method": "rmu",
+      "config": "smoke",
+      "domain": "bio",
+      "split": "test",
+      "source": "artifacts/results/smoke_rmu__test.json",
+      "unlearn_acc": 25.588697017268444,
+      "retain_acc": 21.58590308370044,
+      "mmlu": 28.94736842105263,
+      "fluency": null,
+      "concept": null,
+      "overall": null
+    },
+    {
+      "run": "smoke_elm",
+      "method": "elm",
+      "config": "smoke",
+      "domain": "bio",
+      "split": "test",
+      "source": "artifacts/results/smoke_elm__test.json",
+      "unlearn_acc": 25.588697017268444,
+      "retain_acc": 21.58590308370044,
+      "mmlu": 28.94736842105263,
+      "fluency": null,
+      "concept": null,
+      "overall": null
+    }
+  ]
+}
