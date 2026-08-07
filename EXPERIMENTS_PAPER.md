@@ -2,7 +2,9 @@
 
 Source: *CRISP: Persistent Concept Unlearning via Sparse Autoencoders* — Ashuach, Arad, Mueller, Tutek, Belinkov (ACL 2026, pp. 1806–1825). Local copy: `assets/2026.acl-long.82.pdf`. Code: github.com/technion-cs-nlp/CRISP.
 
-This document records what the paper runs and what it reports, as the reference target for reproduction.
+This document records what the paper runs and what it reports, as the reference target for reproduction. It describes the paper in full, including rows this repo does not attempt.
+
+**What this repo reproduces:** the Gemma-2-2B rows on WMDP-Bio and WMDP-Cyber (Experiments 1–3). The Llama-3.1-8B rows and the Harry Potter benchmark (Experiment 4) are out of scope — Llama-3.1-8B does not fit a Colab session, and each extra corpus costs storage the free Drive tier does not have. The tables below are kept intact as the reference; treat them as the paper's numbers, not as targets this repo checks against.
 
 ## Shared Setup
 

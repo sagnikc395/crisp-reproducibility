@@ -9,6 +9,25 @@ corpus, then LoRA-fine-tunes the model to suppress those features on the target
 corpus while pinning its hidden states on benign text. Unlike inference-time SAE
 steering, the edit lives in the weights.
 
+## Scope
+
+**Gemma-2-2B on WMDP-Bio and WMDP-Cyber** — the four Gemma rows of the paper's
+Table 1, plus the RMU and ELM baselines. Everything here fits one Colab session.
+
+Deliberately out of scope:
+
+- **Llama-3.1-8B** (paper Tables 1–3). The weights, the per-layer Llama Scope
+  SAEs and the larger activations do not fit alongside everything else; an A100
+  is tight even on its own.
+- **The Harry Potter benchmark** (paper Appendix B, Table 3). WMDP is what the
+  paper's safety claim rests on, and a third corpus costs storage the free Drive
+  tier does not have.
+- **The 200-config Bayesian sweep** behind Appendix F. The configs in `configs/`
+  carry the best hyperparameters it found; `crisp sweep` can re-run the search if
+  you have the GPU-hours.
+
+`EXPERIMENTS_PAPER.md` records the paper in full, including these rows.
+
 ## How this is run
 
 The laptop here is an M4 with no CUDA, so the work is split:
@@ -43,7 +62,7 @@ dependencies are installed inside the Colab notebook around Colab's own torch.
 | `cais/wmdp` MCQs, `cais/mmlu` | public | nothing to do |
 | `cais/wmdp-corpora` cyber forget/retain, bio retain | public | nothing to do |
 | `cais/wmdp-bio-forget-corpus` (bio forget) | gated | request at the [dataset page](https://huggingface.co/datasets/cais/wmdp-bio-forget-corpus), then set `HF_TOKEN` (or pass `-o data.target_corpus=path/to/bio-forget.jsonl`) |
-| `google/gemma-2-2b`, `meta-llama/Llama-3.1-8B` | gated | accept the licence on the model page, then set `HF_TOKEN` |
+| `google/gemma-2-2b` | gated | accept the licence on the model page, then set `HF_TOKEN` |
 | Gemma Scope SAEs | public | nothing to do |
 | `Qwen/Qwen3-4B-Thinking-2507` (fluency/concept rater) | public | downloaded on first judged eval (~8 GB); skip with `--no-judge` |
 | GitHub personal access token | yours | fine-grained, this repo, **Contents: read and write** — lets the notebook push results back |
@@ -92,14 +111,22 @@ run.
 | --- | --- | --- |
 | T4 (free) | ~15 GB | `smoke.yaml`; `gemma2-2b` eval, and training only tightly |
 | L4 (Pro) | ~22 GB | full `gemma2-2b_{bio,cyber}` in bf16 — the target to aim for |
-| A100 40 GB | 40 GB | as above comfortably; `llama31-8b` is possible but tight |
+| A100 40 GB | 40 GB | as above, comfortably and roughly twice as fast |
 
 Rough wall clock on an L4: 3–5 hours for all four stages, of which
 `--stages original,crisp` — the headline comparison — is about half. Colab
-disconnects well before that, so the notebook symlinks the HF cache and `data/`
-onto Drive and copies `artifacts/` back and forth; because each stage is skipped
-when its result JSON already exists, re-running the notebook resumes rather than
-restarting.
+disconnects well before that, so the notebook symlinks `data/` onto Drive and
+copies `artifacts/` back and forth; because each stage is skipped when its result
+JSON already exists, re-running the notebook resumes rather than restarting.
+
+**Drive quota.** Only `data/` and `artifacts/` go to Drive. The HF cache stays on
+Colab's local disk (`/content/hf_cache`, ~100 GB free) because Gemma-2-2B (~5 GB),
+six Gemma Scope SAEs (~1.8 GB) and the Qwen3 rater (~8 GB) together exceed a free
+15 GB Drive account. Weights re-download after a disconnect — ~10 minutes, against
+a quota you cannot exceed. Upload only the domain you are running: the cyber
+corpora are ~80 MB, the bio pair ~2.5 GB. The notebook's `LITE = True` drops to
+three SAE layers and skips the rater, which also keeps a free-tier session inside
+its VRAM and disk budget at the cost of blank Fluency/Concept columns.
 
 The token never lands on disk: the clone URL carries it, then the remote is reset
 to the plain HTTPS URL, and the push re-attaches it for that one command.
@@ -221,10 +248,9 @@ generation entirely and report MCQ metrics only.
 
 The configs in `configs/` carry the paper's best-found hyperparameters
 (Appendix F): Gemma-2-2B suppresses SAE layers `[4,6,8,10,12,14]`
-(Bio `k=30, λ=30, r=8`; Cyber `k=50, λ=20, r=4`), Llama-3.1-8B uses
-`[4,6,…,28]` for Bio (`k=10, λ=40, r=8`) and `[4,6,…,18]` for Cyber
-(`k=50, λ=30, r=4`); all use lr `4e-5`, `τ=3`, `β=0.99`, `γ=0.01`, `α=1−β`, and
-LoRA on blocks `[3–9]`.
+(Bio `k=30, λ=30, r=8`; Cyber `k=50, λ=20, r=4`), with lr `4e-5`, `τ=3`,
+`β=0.99`, `γ=0.01`, `α=1−β`, and LoRA on blocks `[3–9]`. The paper's
+Llama-3.1-8B rows are out of scope here — see *Scope* below.
 
 ## Implementation notes
 
@@ -233,8 +259,7 @@ LoRA on blocks `[3–9]`.
   than holding a second set of weights. `tests/test_integration.py` asserts the
   adapter-disabled logits equal the pre-LoRA logits exactly.
 - **Hook site.** Activations are captured at each block's output
-  (`hook_resid_post`), which is what Gemma Scope / Llama Scope SAEs are trained
-  on. Note HF applies the final RMSNorm to the *last* entry of
+  (`hook_resid_post`), which is what Gemma Scope SAEs are trained on. Note HF applies the final RMSNorm to the *last* entry of
   `output_hidden_states`; the hook deliberately reads the un-normalised stream.
 - **Δφ normalisation.** Eq. 4 subtracts raw counts. Because the target and
   retain corpora differ in token count (cyber-retain is ~4× the cyber-forget
@@ -248,17 +273,16 @@ LoRA on blocks `[3–9]`.
   controlled, so the configs point at the public `google/gemma-scope-2b-pt-res`
   and `sae.filename_template: auto` picks the release whose average L0 is
   nearest `sae.l0_target` (100, matching the canonical rule).
-- **Llama Scope** publishes one repo per layer with varying key layouts; the
-  loader normalises common names and orientations, and `sae.source: sae_lens`
-  is available as an alternative backend if you have `sae_lens` installed.
+- **`sae.source: sae_lens`** is available as an alternative SAE backend if you
+  have `sae_lens` installed.
 - **Baselines.** RMU follows Li et al. (2024) directly. ELM is reimplemented
   from its paper description (CFG-style erasure target + retention KL + fluency
   term); treat its numbers as indicative rather than an exact reproduction.
 - **Hardware.** `reproduce.sh` resolves dtype from the card: bf16 on Ampere and
   newer, float32 on pre-Ampere (a T4) and on CPU. Training runs without a gradient
   scaler, so float16 there would give silent NaNs where float32 gives a clean OOM.
-  Gemma-2-2B in bf16 is comfortable on an L4; Llama-3.1-8B wants an A100 — the
-  paper used RTX 6000 Ada 49 GB cards.
+  Gemma-2-2B in bf16 is comfortable on an L4; the paper used RTX 6000 Ada 49 GB
+  cards.
 
 ## Tests
 
@@ -308,7 +332,7 @@ src/crisp/
   fetch.py          materialises every dataset under data/
   report.py         aggregates artifacts/results into the Table 1 comparison
   plots.py          figures for those same results
-  sae.py            SAE module + Gemma Scope / Llama Scope / sae_lens loaders
+  sae.py            SAE module + Gemma Scope / sae_lens loaders
   model.py          model loading, residual capture, LoRA, frozen-reference ctx
   features.py       Eq. 3-8 contrastive feature selection
   losses.py         Eq. 9-11

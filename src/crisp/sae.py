@@ -1,7 +1,7 @@
 """Sparse autoencoders over the residual stream (Section 3.1, Eq. 1).
 
-Supports pretrained Gemma Scope (JumpReLU) and Llama Scope SAEs, an optional
-``sae_lens`` backend, and a random SAE for pipeline smoke tests.
+Supports pretrained Gemma Scope (JumpReLU) SAEs, an optional ``sae_lens``
+backend, and a random SAE for pipeline smoke tests.
 """
 
 from __future__ import annotations
@@ -133,61 +133,6 @@ def _load_gemma_scope(cfg: SAEConfig, layer: int) -> SparseAutoencoder:
     )
 
 
-_KEY_ALIASES = {
-    "W_enc": ["W_enc", "encoder.weight", "sae.encoder.weight", "enc.weight"],
-    "b_enc": ["b_enc", "encoder.bias", "sae.encoder.bias", "enc.bias"],
-    "W_dec": ["W_dec", "decoder.weight", "sae.decoder.weight", "dec.weight"],
-    "b_dec": ["b_dec", "decoder.bias", "sae.decoder.bias", "dec.bias", "b_D"],
-    "threshold": ["threshold", "log_jumprelu_threshold", "jumprelu_threshold"],
-}
-
-
-def _pick(tensors: dict[str, torch.Tensor], name: str) -> torch.Tensor | None:
-    for alias in _KEY_ALIASES[name]:
-        if alias in tensors:
-            return tensors[alias]
-    return None
-
-
-def _load_llama_scope(cfg: SAEConfig, layer: int, d_model: int) -> SparseAutoencoder:
-    from huggingface_hub import list_repo_files, hf_hub_download
-    from safetensors.torch import load_file
-
-    repo_id = (cfg.repo_template or "fnlp/Llama3_1-8B-Base-L{layer}R-8x").format(layer=layer)
-    files = [f for f in list_repo_files(repo_id, token=hf_token()) if f.endswith(".safetensors")]
-    if not files:
-        raise FileNotFoundError(f"no .safetensors weights in {repo_id}")
-    files.sort(key=len)
-    path = hf_hub_download(repo_id=repo_id, filename=files[0], token=hf_token())
-    raw = {k: v.float() for k, v in load_file(path).items()}
-
-    W_enc = _pick(raw, "W_enc")
-    W_dec = _pick(raw, "W_dec")
-    if W_enc is None or W_dec is None:
-        raise KeyError(f"unrecognised SAE key layout in {repo_id}: {sorted(raw)}")
-    # Normalise orientation to [d_model, d_sae] / [d_sae, d_model].
-    if W_enc.shape[0] != d_model:
-        W_enc = W_enc.T
-    if W_dec.shape[1] != d_model:
-        W_dec = W_dec.T
-    d_sae = W_enc.shape[1]
-
-    b_enc = _pick(raw, "b_enc")
-    b_dec = _pick(raw, "b_dec")
-    threshold = _pick(raw, "threshold")
-    if threshold is not None and "log_jumprelu_threshold" in raw:
-        threshold = threshold.exp()
-
-    return SparseAutoencoder(
-        W_enc=W_enc.contiguous(),
-        b_enc=b_enc if b_enc is not None else torch.zeros(d_sae),
-        W_dec=W_dec.contiguous(),
-        b_dec=b_dec if b_dec is not None else torch.zeros(d_model),
-        activation="jumprelu" if threshold is not None else "relu",
-        threshold=threshold,
-    )
-
-
 def _load_sae_lens(cfg: SAEConfig, layer: int) -> SparseAutoencoder:
     from sae_lens import SAE
 
@@ -231,8 +176,6 @@ def load_saes(
     for layer in layers:
         if cfg.source == "gemma_scope":
             sae = _load_gemma_scope(cfg, layer)
-        elif cfg.source == "llama_scope":
-            sae = _load_llama_scope(cfg, layer, d_model)
         elif cfg.source == "sae_lens":
             sae = _load_sae_lens(cfg, layer)
         elif cfg.source == "random":

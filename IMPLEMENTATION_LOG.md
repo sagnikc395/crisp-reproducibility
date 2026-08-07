@@ -50,7 +50,7 @@ What that commit established, in dependency order:
 | --- | --- |
 | `config.py` | One `@dataclass` per section (`model`/`sae`/`data`/`selection`/`train`/`eval`), YAML loading, and `section.field=value` CLI overrides. Unknown keys raise instead of being silently ignored — a typo in a config is a failed run, not a wrong number. |
 | `data.py` | Corpus download + cleaning, WMDP/MMLU MCQ loading, deterministic val/test halving, coherence sets, generation prefixes. |
-| `sae.py` | `SparseAutoencoder` (JumpReLU / ReLU / TopK) + loaders for Gemma Scope, Llama Scope, `sae_lens`, and a random SAE for smoke tests. |
+| `sae.py` | `SparseAutoencoder` (JumpReLU / ReLU / TopK) + loaders for Gemma Scope, `sae_lens`, and a random SAE for smoke tests. |
 | `model.py` | Model loading, `ResidualCapture` (forward hooks on block outputs), `base_model()` (the frozen reference `M₀`), LoRA attachment. |
 | `features.py` | Eq. 3–8: per-feature activation statistics over each corpus, then top-`k` by Δφ filtered by ρ ≥ τ. |
 | `losses.py` | Eq. 9 (unlearning), Eq. 10 (retention/coherence distance), Eq. 11 (weighted sum). |
@@ -181,7 +181,7 @@ The contrastive core, Eq. 3–8. For up to `selection.max_docs` (500) documents 
 corpus:
 
 1. Forward pass with `ResidualCapture` hooks on each suppressed block's **output**
-   (`hook_resid_post` — what Gemma/Llama Scope SAEs are trained on).
+   (`hook_resid_post` — what Gemma Scope SAEs are trained on).
 2. Encode every real token's hidden state through the layer's SAE.
 3. Accumulate two `[d_sae]` vectors: `count` = tokens where the feature fired
    (φ, Eq. 3), `total` = summed activation magnitude (A, Eq. 5).
@@ -305,7 +305,7 @@ If a number looks off later, suspect these first.
   has been available in this environment, so no CRISP-vs-RMU/ELM comparison has
   been produced. The harness is finished; the experiments are not.
 - The bio half is additionally blocked on `cais/wmdp-bio-forget-corpus` access.
-- Llama-3.1-8B is a phase-2 stretch goal — it needs an A100, and is tight there.
+- Llama-3.1-8B is out of scope — it needs an A100, and is tight even there.
 
 **Unblocking order:**
 

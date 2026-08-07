@@ -11,12 +11,14 @@ Paper code: <https://github.com/technion-cs-nlp/CRISP>
 
 Do **not** reproduce the paper as published (2400 fine-tuning runs behind a 200-config
 Bayesian sweep — hundreds of GPU-hours, thousands of dollars). Instead reproduce the
-**Gemma-2-2B rows of Table 1 and Table 3** using the fixed best hyperparameters from
-Appendix F. That is a handful of sub-$2 runs and makes or breaks the paper's central
-comparison. Llama-3.1-8B is a phase-2 stretch goal.
+**Gemma-2-2B rows of Table 1** using the fixed best hyperparameters from Appendix F.
+That is a handful of sub-$2 runs and makes or breaks the paper's central comparison.
+Llama-3.1-8B is out of scope: the weights, its SAEs and the larger activations do not
+fit a Colab session. The Table 3 (Harry Potter) rows are out of scope too — the WMDP
+domains are what the paper's safety claim rests on, and each extra corpus is storage
+the free Drive tier does not have.
 
-**Pass/fail target:** the four Gemma-2-2B rows of Table 1 (WMDP-Bio + WMDP-Cyber) and
-the Gemma-2-2B rows of Table 3 (Harry Potter).
+**Pass/fail target:** the four Gemma-2-2B rows of Table 1 (WMDP-Bio + WMDP-Cyber).
 
 ---
 
@@ -41,10 +43,11 @@ the Gemma-2-2B rows of Table 3 (Harry Potter).
    MCQs (`cais/wmdp`) and the cyber/retain corpora are open — build and test the eval half,
    and run the **cyber** pair, while waiting.
 
-2. **Run the Harry Potter demo end-to-end on Gemma-2-2B.** Only path where the authors'
-   code, a public dataset, and a small model all line up. Validates the environment against
-   a published number — **Table 3, Gemma-2-2B: CRISP overall 49.30, unlearn acc 25.65**.
-   If you can't hit that, nothing downstream is trustworthy. ~1 hour on a Colab T4.
+2. **Run `configs/smoke.yaml` end-to-end, then the cyber pair.** The smoke config
+   exercises fetch → select → train → eval → report on a tiny random model in about a
+   minute, and the cyber pair is the first run against real published numbers — its
+   corpora are public and total ~80 MB. If cyber does not land near Table 1, nothing
+   downstream is trustworthy.
 
 ---
 
@@ -136,9 +139,8 @@ metric-design artifact — worth isolating.
 
 | Phase | Scope | Compute | Gate |
 |---|---|---|---|
-| 0 | Env + HP demo on Gemma-2-2B | M4 / free T4 | Recover Table 3 Gemma row |
+| 0 | Env + smoke config + cyber pair | M4 / free T4 | Cyber rows near Table 1 |
 | 1 | Gemma-2-2B Table 1, both domains, 3 methods | < $50 A100 | Recover the four Gemma rows |
-| 2 | Llama-3.1-8B (48–80 GB, ~4× time/run) | fund only if phase 1 holds | Recover Llama rows |
 
 Once phase 1's pipeline runs, each **ablation** is one more sub-$2 fine-tuning run — see
 `ABLATIONS.md` (to be written) for the planned set.

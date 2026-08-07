@@ -38,7 +38,7 @@ model that forgets by becoming stupid scores zero.
 a 200-config Bayesian sweep — hundreds of GPU-hours). The scoped goal is the
 **Gemma-2-2B rows of Table 1 and Table 3** at the fixed Appendix F hyperparameters:
 a handful of cheap runs that make or break the central CRISP-vs-RMU/ELM comparison.
-Llama-3.1-8B is a phase-2 stretch goal needing a rented GPU.
+Llama-3.1-8B is out of scope: it does not fit a Colab session.
 
 ---
 
@@ -53,7 +53,7 @@ is not a turnkey script there.
 - The full method — Eq. 1 (SAE), Eq. 3–8 (contrastive feature selection), Eq. 9–11
   (the three training losses), Eq. 12 (aggregate score) — each unit-tested against
   hand-computed values.
-- SAE loaders for **Gemma Scope**, **Llama Scope**, `sae_lens`, and a random SAE for
+- SAE loaders for **Gemma Scope**, `sae_lens`, and a random SAE for
   offline smoke tests.
 - The complete data pipeline: WMDP/MMLU download, §4.1 corpus cleaning,
   deterministic val/test halving, Appendix D coherence sets, Appendix E prefixes.
@@ -89,7 +89,7 @@ exists yet. The harness is finished; the experiments are not. See §6.
 
 | Module | What it does | Why it exists / why you'd open it |
 | --- | --- | --- |
-| `src/crisp/sae.py` | `SparseAutoencoder` (JumpReLU / ReLU / TopK) plus loaders for Gemma Scope, Llama Scope, `sae_lens`, and a random SAE. | The SAE is the lens the whole method looks through. Open this when an SAE fails to load, a checkpoint has an unfamiliar key layout, or you want a different width/L0. Handles the annoying reality that every SAE release names and orients its weights differently. |
+| `src/crisp/sae.py` | `SparseAutoencoder` (JumpReLU / ReLU / TopK) plus loaders for Gemma Scope, `sae_lens`, and a random SAE. | The SAE is the lens the whole method looks through. Open this when an SAE fails to load, a checkpoint has an unfamiliar key layout, or you want a different width/L0. Handles the annoying reality that every SAE release names and orients its weights differently. |
 | `src/crisp/features.py` | Eq. 3–8. Accumulates per-feature activation counts (φ) and magnitudes (A) over each corpus, then takes top-`k` by Δφ and filters by ratio ρ ≥ τ. | The contrastive core — this is *which features get suppressed*. If unlearning is too weak or too destructive, the answer is usually here (`top_k`, `tau`). Results cache to `outputs/features/`. |
 | `src/crisp/losses.py` | Eq. 9 (unlearning), Eq. 10 (retention/coherence distance), Eq. 11 (weighted sum). | 68 lines, the entire objective. The clearest single file in the repo — read it to understand the method. |
 | `src/crisp/train.py` | The 200-step loop: three forward passes per step (target/retain/coherence), one backward, checkpointing, loss history. | Where the three losses meet an optimiser. Open it to change the schedule, add logging, or debug a loss that won't move. |
@@ -161,7 +161,7 @@ Python **3.13** (`pyproject.toml` requires `>=3.13`; tests pass on 3.13.7).
 | `cais/wmdp` MCQs, `cais/mmlu` | public | nothing to do |
 | `cais/wmdp-corpora` (cyber forget/retain, bio retain) | public | nothing to do |
 | `cais/wmdp-bio-forget-corpus` (bio forget) | **gated** | request at the [dataset page](https://huggingface.co/datasets/cais/wmdp-bio-forget-corpus), then `export HF_TOKEN=…` — or bypass with `-o data.target_corpus=path/to/bio-forget.jsonl` |
-| `google/gemma-2-2b`, `meta-llama/Llama-3.1-8B` | **gated** | accept the licence on the model page, then `export HF_TOKEN=…` |
+| `google/gemma-2-2b` | **gated** | accept the licence on the model page, then `export HF_TOKEN=…` |
 | Gemma Scope SAEs | public | nothing to do |
 | `Qwen/Qwen3-4B-Thinking-2507` (fluency/concept rater) | public | downloaded on first judged eval (~8 GB); or run `--no-judge` |
 

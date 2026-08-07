@@ -131,7 +131,7 @@ import sys, yaml
 from crisp.utils import hf_token   # loads .env
 
 name = ((yaml.safe_load(open(sys.argv[1])) or {}).get("model") or {}).get("name", "")
-if name.startswith(("google/", "meta-llama/")):
+if name.startswith("google/"):
     if not hf_token():
         sys.exit(f"preflight: {name} is gated but no HF_TOKEN found.\n"
                  f"  Accept the licence at https://huggingface.co/{name}, then\n"

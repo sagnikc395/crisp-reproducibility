@@ -38,7 +38,7 @@ class ModelConfig:
 
 @dataclass
 class SAEConfig:
-    #: ``gemma_scope`` | ``llama_scope`` | ``sae_lens`` | ``random`` (smoke tests)
+    #: ``gemma_scope`` | ``sae_lens`` | ``random`` (smoke tests)
     source: str = "gemma_scope"
     repo_id: str = "google/gemma-scope-2b-pt-res"
     #: Format string resolved with ``layer``/``width``. ``auto`` lists the repo and
@@ -47,8 +47,6 @@ class SAEConfig:
     filename_template: str = "auto"
     #: Target average L0; 100 matches the Gemma Scope "canonical" selection rule.
     l0_target: int = 100
-    #: llama-scope publishes one repo per layer instead of one file per layer.
-    repo_template: str | None = None
     width: int = 16384
     d_model: int | None = None
 
