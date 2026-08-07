@@ -14,9 +14,9 @@
 #   --stages   comma-separated subset of original,crisp,rmu,elm
 #
 # Credentials come from .env at the repo root (HF_TOKEN for the gated Gemma
-# weights and bio forget corpus; ANTHROPIC_API_KEY for the fluency/concept
-# columns). Without an API key the run adds --no-judge automatically and those
-# two columns stay blank.
+# weights and bio forget corpus). The fluency/concept columns are scored by a
+# local Qwen3 rater downloaded on first use; pass --no-judge to skip it and
+# leave those two columns blank.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -75,14 +75,6 @@ if [ "${LOCAL}" = "1" ]; then
   # kernel aborts the run outright instead of running on the CPU.
   export PYTORCH_ENABLE_MPS_FALLBACK=1
   echo "preset: --local (mps/float32, full-MMLU subsampled to 2 questions/subject)"
-fi
-
-# The judge is the only paid step; drop it automatically when unconfigured.
-if ! "${PY}" -c "
-from crisp.utils import load_dotenv; load_dotenv()
-import os, sys; sys.exit(0 if os.environ.get('ANTHROPIC_API_KEY') else 1)" 2>/dev/null; then
-  echo "note: no ANTHROPIC_API_KEY -- adding --no-judge (Fluency/Concept stay blank)"
-  PASSTHROUGH+=(--no-judge)
 fi
 
 # ${arr[@]+...} keeps an empty array from tripping `set -u` on bash 3.2 (macOS).

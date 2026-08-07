@@ -1,8 +1,7 @@
-"""Fluency and Concept scores via an LLM rater (Appendix E)."""
+"""Fluency and Concept scores via a local LLM rater (Appendix E)."""
 
 from __future__ import annotations
 
-import os
 import re
 import statistics
 from dataclasses import dataclass
@@ -10,7 +9,7 @@ from dataclasses import dataclass
 import torch
 from tqdm.auto import tqdm
 
-from .utils import chunked, get_logger
+from .utils import chunked, get_logger, hf_token, resolve_device
 
 log = get_logger(__name__)
 
@@ -81,53 +80,140 @@ def generate_continuations(
     return outputs
 
 
+def _strip_thinking(response: str) -> str | None:
+    """Return the answer after the reasoning block, or None if it never closed.
+
+    Qwen3 ``-Thinking`` checkpoints always open a ``<think>`` block and only
+    emit the rating after ``</think>``. A response with no closing tag was cut
+    off mid-reasoning, so it holds no rating at all -- returning the raw text
+    would let the digit fallback below score the model on its own scratchpad.
+    """
+    if "</think>" not in response:
+        return None if "<think>" in response else response
+    return response.rsplit("</think>", 1)[1]
+
+
 def _parse_rating(response: str) -> int | None:
-    match = _RATING.search(response)
+    answer = _strip_thinking(response)
+    if answer is None:
+        return None
+    match = _RATING.search(answer)
     if match:
         return int(match.group(1))
-    fallback = re.findall(r"\b([0-2])\b", response[-40:])
+    fallback = re.findall(r"\b([0-2])\b", answer[-40:])
     return int(fallback[-1]) if fallback else None
+
+
+_JUDGE_CACHE: dict[str, tuple] = {}
+
+
+def load_judge(model: str, device: str | None = None, dtype: str = "bfloat16"):
+    """Load (and memoise) the rater. Cached so a sweep pays the load once."""
+    key = f"{model}|{device}|{dtype}"
+    if key not in _JUDGE_CACHE:
+        from transformers import AutoModelForCausalLM, AutoTokenizer
+
+        resolved = resolve_device(device)
+        # Inference only, so bf16 is safe on MPS here -- the fp32 default in
+        # resolve_dtype exists for optimiser stability during training.
+        torch_dtype = getattr(torch, dtype)
+        tok = AutoTokenizer.from_pretrained(model, token=hf_token())
+        if tok.pad_token is None:
+            tok.pad_token = tok.eos_token
+        judge = AutoModelForCausalLM.from_pretrained(model, dtype=torch_dtype, token=hf_token())
+        judge.to(resolved)
+        judge.eval()
+        log.info("loaded judge %s on %s (%s)", model, resolved, torch_dtype)
+        _JUDGE_CACHE[key] = (judge, tok, resolved)
+    return _JUDGE_CACHE[key]
+
+
+def unload_judge() -> None:
+    """Drop the cached rater so the model under test gets the memory back."""
+    _JUDGE_CACHE.clear()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+    elif torch.backends.mps.is_available():
+        torch.mps.empty_cache()
+
+
+@torch.no_grad()
+def _rate(judge, tok, device, prompts: list[tuple[str, str]], max_new_tokens: int,
+          batch_size: int, seed: int) -> list[int | None]:
+    """Run (system, user) prompt pairs through the rater and parse the scores."""
+    texts = [
+        tok.apply_chat_template(
+            [{"role": "system", "content": system}, {"role": "user", "content": user}],
+            tokenize=False,
+            add_generation_prompt=True,
+        )
+        for system, user in prompts
+    ]
+    original_side = tok.padding_side
+    tok.padding_side = "left"
+    scores: list[int | None] = []
+    try:
+        for batch in tqdm(list(chunked(texts, batch_size)), desc="judge", leave=False):
+            enc = tok(batch, return_tensors="pt", padding=True, add_special_tokens=False)
+            enc = {k: v.to(device) for k, v in enc.items()}
+            # Qwen3 thinking checkpoints degenerate into repetition under greedy
+            # decoding, so use the sampling settings from the model card and fix
+            # the seed instead to keep runs reproducible.
+            torch.manual_seed(seed)
+            out = judge.generate(
+                **enc,
+                max_new_tokens=max_new_tokens,
+                do_sample=True,
+                temperature=0.6,
+                top_p=0.95,
+                top_k=20,
+                pad_token_id=tok.pad_token_id,
+            )
+            new_tokens = out[:, enc["input_ids"].shape[1] :]
+            for reply in tok.batch_decode(new_tokens, skip_special_tokens=False):
+                scores.append(_parse_rating(reply))
+    finally:
+        tok.padding_side = original_side
+    return scores
 
 
 def judge_generations(
     generations: list[Generation],
     concept: str,
-    model: str = "claude-sonnet-4-5",
-    max_tokens: int = 400,
+    model: str = "Qwen/Qwen3-4B-Thinking-2507",
+    max_new_tokens: int = 2048,
+    batch_size: int = 4,
+    device: str | None = None,
+    dtype: str = "bfloat16",
+    seed: int = 0,
 ) -> dict:
-    """Score each generation for fluency and concept presence with Claude."""
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        raise RuntimeError(
-            "ANTHROPIC_API_KEY is not set; rerun with --no-judge to only dump generations"
+    """Score each generation for fluency and concept presence with a local rater."""
+    judge, tok, resolved = load_judge(model, device, dtype)
+
+    fluency_prompts = [
+        (FLUENCY_SYSTEM, FLUENCY_USER.format(prefix=g.prefix, generated_text=g.text))
+        for g in generations
+    ]
+    concept_prompts = [
+        (CONCEPT_SYSTEM,
+         CONCEPT_USER.format(concept=concept, prefix=g.prefix, generated_text=g.text))
+        for g in generations
+    ]
+    f_scores = _rate(judge, tok, resolved, fluency_prompts, max_new_tokens, batch_size, seed)
+    c_scores = _rate(judge, tok, resolved, concept_prompts, max_new_tokens, batch_size, seed)
+
+    fluency = [s for s in f_scores if s is not None]
+    concept_scores = [s for s in c_scores if s is not None]
+    unparsed = sum(s is None for s in f_scores + c_scores)
+    if unparsed:
+        log.warning(
+            "%d/%d ratings unparsed (raise eval.judge_max_new_tokens if the rater "
+            "is being truncated mid-reasoning)", unparsed, len(f_scores) + len(c_scores)
         )
-    import anthropic
-
-    client = anthropic.Anthropic()
-    fluency: list[int] = []
-    concept_scores: list[int] = []
-    rows = []
-
-    for gen in tqdm(generations, desc="judge", leave=False):
-        def ask(system: str, user: str) -> int | None:
-            reply = client.messages.create(
-                model=model,
-                max_tokens=max_tokens,
-                system=system,
-                messages=[{"role": "user", "content": user}],
-            )
-            text = "".join(b.text for b in reply.content if b.type == "text")
-            return _parse_rating(text)
-
-        f = ask(FLUENCY_SYSTEM, FLUENCY_USER.format(prefix=gen.prefix, generated_text=gen.text))
-        c = ask(
-            CONCEPT_SYSTEM,
-            CONCEPT_USER.format(concept=concept, prefix=gen.prefix, generated_text=gen.text),
-        )
-        if f is not None:
-            fluency.append(f)
-        if c is not None:
-            concept_scores.append(c)
-        rows.append({"prefix": gen.prefix, "text": gen.text, "fluency": f, "concept": c})
+    rows = [
+        {"prefix": g.prefix, "text": g.text, "fluency": f, "concept": c}
+        for g, f, c in zip(generations, f_scores, c_scores)
+    ]
 
     def summarise(values: list[int]) -> tuple[float, float]:
         if not values:

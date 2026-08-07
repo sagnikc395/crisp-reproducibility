@@ -123,8 +123,17 @@ class EvalConfig:
     mmlu_max_per_subject: int = 0  # 0 -> all
     gen_prompts_path: str | None = None
     gen_max_new_tokens: int = 50
-    judge_model: str = "claude-sonnet-4-5"
+    #: Local rater (Appendix E). The ``-FP8`` variant needs vLLM on a CUDA GPU;
+    #: this bf16 checkpoint is the one that runs in-process under transformers.
+    judge_model: str = "Qwen/Qwen3-4B-Thinking-2507"
     judge_concept: str | None = None
+    judge_device: str | None = None  # None -> same auto-detection as the model
+    judge_dtype: str = "bfloat16"
+    #: Thinking checkpoints spend most of their budget before the rating; too
+    #: small a budget truncates them mid-reasoning and every score parses empty.
+    judge_max_new_tokens: int = 2048
+    judge_batch_size: int = 4
+    judge_seed: int = 0
 
 
 @dataclass

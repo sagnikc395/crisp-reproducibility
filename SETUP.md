@@ -106,7 +106,7 @@ exists yet. The harness is finished; the experiments are not. See §6.
 | Module | What it does | Why it exists / why you'd open it |
 | --- | --- | --- |
 | `src/crisp/eval_mcq.py` | Zero-shot accuracy: argmax over the logits of the four answer-letter tokens after `"Answer:"`. | No generation, no answer parsing, no format-following failures — the measurement is clean. Also handles the left-padding needed to keep the final position aligned across a batch. |
-| `src/crisp/eval_gen.py` | Greedy 50-token continuations, then an LLM rater scoring fluency and concept-presence 0–2 with the paper's verbatim Appendix E prompts. | The only paid, non-deterministic part of the pipeline (`--no-judge` skips it). MCQ accuracy alone can't tell "forgot the concept" from "became incoherent"; this can. |
+| `src/crisp/eval_gen.py` | Greedy 50-token continuations, then an LLM rater scoring fluency and concept-presence 0–2 with the paper's verbatim Appendix E prompts. | A second 4B model loads for this stage, then unloads (`--no-judge` skips it). MCQ accuracy alone can't tell "forgot the concept" from "became incoherent"; this can. |
 | `src/crisp/evaluate.py` | The harness: WMDP unlearn accuracy, in-domain MMLU retention, full MMLU, fluency/concept, then Eq. 12. | One call produces a full Table 1 row. |
 | `src/crisp/metrics.py` | Eq. 12 (`HM(100−U, R, M, 50F, 50C)`) and the Appendix F geometric-mean sweep criterion. | The harmonic mean is the anti-cheating device: zero on any axis ⇒ zero overall. |
 
@@ -136,7 +136,6 @@ exists yet. The harness is finished; the experiments are not. See §6.
 
 ```bash
 uv sync --extra dev            # core + pytest
-uv sync --extra judge          # + anthropic, for the fluency/concept rater
 uv sync --extra sweep          # + optuna
 uv sync --extra mlx            # + mlx-lm, Apple-silicon eval backend
 ```
@@ -157,7 +156,7 @@ Python **3.13** (`pyproject.toml` requires `>=3.13`; tests pass on 3.13.7).
 | `cais/wmdp-bio-forget-corpus` (bio forget) | **gated** | request at the [dataset page](https://huggingface.co/datasets/cais/wmdp-bio-forget-corpus), then `export HF_TOKEN=…` — or bypass with `-o data.target_corpus=path/to/bio-forget.jsonl` |
 | `google/gemma-2-2b`, `meta-llama/Llama-3.1-8B` | **gated** | accept the licence on the model page, then `export HF_TOKEN=…` |
 | Gemma Scope SAEs | public | nothing to do |
-| Fluency / Concept scores | needs an LLM rater | `export ANTHROPIC_API_KEY=…`, or run `--no-judge` |
+| `Qwen/Qwen3-4B-Thinking-2507` (fluency/concept rater) | public | downloaded on first judged eval (~8 GB); or run `--no-judge` |
 
 If `hf auth whoami` reports an invalid token, run `hf auth login --force`.
 
@@ -190,7 +189,7 @@ python -m crisp train -c configs/gemma2-2b_bio.yaml \
   -o selection.top_k=50 -o train.lambda_scale=20 -o train.lr=3e-5
 ```
 
-Useful flags: `--no-judge` (skip the paid rater), `--skip-generation` (MCQ metrics
+Useful flags: `--no-judge` (skip the local rater), `--skip-generation` (MCQ metrics
 only), `--refresh-features` (ignore the cached feature selection).
 
 **Reading the output.** `unlearn_acc` should *fall* toward 25% (chance);

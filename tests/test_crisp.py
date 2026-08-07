@@ -271,3 +271,20 @@ def test_all_paper_configs_parse():
         cfg = Config.from_yaml(path)
         assert cfg.model.sae_layers
         assert json.dumps(cfg.to_dict())
+
+
+def test_rating_parser_ignores_the_reasoning_block():
+    from crisp.eval_gen import _parse_rating
+
+    reply = (
+        "<think>The text repeats itself, so maybe 0, or possibly 1 or 2.</think>\n"
+        "The generated text is repetitive. Rating: [[1]]"
+    )
+    assert _parse_rating(reply) == 1
+
+    # No closing tag -> the rater was truncated mid-reasoning and never rated.
+    assert _parse_rating("<think>Hmm, this looks like a 2 to me and") is None
+
+    # A non-thinking rater still parses, including via the trailing-digit fallback.
+    assert _parse_rating("Fluent enough. Rating: [[2]]") == 2
+    assert _parse_rating("The concept is absent, so the score is 0") == 0

@@ -1,7 +1,7 @@
 # CRISP reproduction results
 
 `^` higher is better, `v` lower is better. Blank cells were not evaluated
-(generation columns need `ANTHROPIC_API_KEY`; `--no-judge` leaves them empty).
+(generation columns are scored by the local Qwen3 rater; `--no-judge` leaves them empty).
 
 | Run | Method | WMDP acc v | In-domain MMLU ^ | MMLU ^ | Fluency ^ | Concept v | Overall ^ |
 |---|---|---|---|---|---|---|---|

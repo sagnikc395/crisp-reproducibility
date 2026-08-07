@@ -16,7 +16,7 @@ from .data import (
     load_mmlu_full,
     load_wmdp_mcq,
 )
-from .eval_gen import generate_continuations, judge_generations
+from .eval_gen import generate_continuations, judge_generations, unload_judge
 from .eval_mcq import evaluate_mcq
 from .metrics import overall_score
 from .utils import get_logger
@@ -70,7 +70,17 @@ def evaluate_model(
         results["generations"] = [{"prefix": g.prefix, "text": g.text} for g in generations]
         if judge:
             concept = cfg.eval.judge_concept or CONCEPT_NAME[domain]
-            scored = judge_generations(generations, concept, cfg.eval.judge_model)
+            scored = judge_generations(
+                generations,
+                concept,
+                model=cfg.eval.judge_model,
+                max_new_tokens=cfg.eval.judge_max_new_tokens,
+                batch_size=cfg.eval.judge_batch_size,
+                device=cfg.eval.judge_device,
+                dtype=cfg.eval.judge_dtype,
+                seed=cfg.eval.judge_seed,
+            )
+            unload_judge()  # the rater and the model under test share the device
             results.update(
                 fluency=scored["fluency"],
                 fluency_std=scored["fluency_std"],

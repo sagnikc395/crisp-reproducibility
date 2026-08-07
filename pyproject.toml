@@ -19,7 +19,6 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-judge = ["anthropic>=0.40.0"]
 sweep = ["optuna>=4.0.0"]
 dev = ["pytest>=8.0.0"]
 mlx = [

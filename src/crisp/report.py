@@ -101,7 +101,8 @@ def to_markdown(rows: list[dict]) -> str:
         "# CRISP reproduction results",
         "",
         "`^` higher is better, `v` lower is better. Blank cells were not evaluated",
-        "(generation columns need `ANTHROPIC_API_KEY`; `--no-judge` leaves them empty).",
+        "(generation columns are scored by the local Qwen3 rater; `--no-judge` "
+        "leaves them empty).",
         "",
         "| " + " | ".join(headers) + " |",
         "|" + "|".join(["---"] * len(headers)) + "|",

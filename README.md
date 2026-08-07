@@ -21,7 +21,7 @@ steering, the edit lives in the weights.
 ## Install
 
 ```bash
-uv sync --extra dev            # add --extra judge for the LLM rater, --extra sweep for Optuna
+uv sync --extra dev            # add --extra sweep for Optuna, --extra mlx for the Apple-silicon backend
 ```
 
 ### Access you need to provide
@@ -33,12 +33,12 @@ uv sync --extra dev            # add --extra judge for the LLM rater, --extra sw
 | `cais/wmdp-bio-forget-corpus` (bio forget) | gated | request at the [dataset page](https://huggingface.co/datasets/cais/wmdp-bio-forget-corpus), then set `HF_TOKEN` (or pass `-o data.target_corpus=path/to/bio-forget.jsonl`) |
 | `google/gemma-2-2b`, `meta-llama/Llama-3.1-8B` | gated | accept the licence on the model page, then set `HF_TOKEN` |
 | Gemma Scope SAEs | public | nothing to do |
-| Fluency / Concept scores | needs an LLM rater | set `ANTHROPIC_API_KEY` (or run with `--no-judge`) |
+| `Qwen/Qwen3-4B-Thinking-2507` (fluency/concept rater) | public | downloaded on first judged eval (~8 GB); skip with `--no-judge` |
 
 Credentials are read from a `.env` file at the repo root, so a one-time
 
 ```bash
-printf 'HF_TOKEN=hf_...\nANTHROPIC_API_KEY=sk-ant-...\n' > .env
+printf 'HF_TOKEN=hf_...\n' > .env
 ```
 
 is enough — no `export` needed. Real environment variables still take precedence.
@@ -106,8 +106,8 @@ CRISP-vs-original comparison in roughly half that.
 
 [`notebooks/crisp_colab.ipynb`](notebooks/crisp_colab.ipynb) runs the same
 `scripts/reproduce.sh` pipeline on a CUDA GPU, for when the laptop route is too
-slow or too tight on memory. It clones the repo, reads `HF_TOKEN` /
-`ANTHROPIC_API_KEY` from Colab secrets into `.env`, installs the dependencies
+slow or too tight on memory. It clones the repo, reads `HF_TOKEN`
+from Colab secrets into `.env`, installs the dependencies
 around Colab's preinstalled torch, picks a dtype for whatever GPU you were
 assigned, and renders the results table at the end. `CONFIG` and `STAGES` at the
 top of the notebook select the run.
@@ -156,7 +156,7 @@ python -m crisp train -c configs/gemma2-2b_bio.yaml \
   -o selection.top_k=50 -o train.lambda_scale=20 -o train.lr=3e-5
 ```
 
-Add `--no-judge` to skip the paid LLM rater, or `--skip-generation` to skip
+Add `--no-judge` to skip the local LLM rater, or `--skip-generation` to skip
 generation entirely and report MCQ metrics only.
 
 ## Local inference on Apple silicon (mlx-lm)

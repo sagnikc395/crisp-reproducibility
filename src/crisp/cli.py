@@ -285,7 +285,7 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> None:
     args = build_parser().parse_args(argv)
     setup_logging(args.log_level)
-    load_dotenv()  # HF_TOKEN / ANTHROPIC_API_KEY without a manual export
+    load_dotenv()  # HF_TOKEN without a manual export
     torch.set_grad_enabled(True)
     args.func(args)
 
