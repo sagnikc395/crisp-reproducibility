@@ -2,22 +2,26 @@
 
 Regenerate with `python -m crisp plots` after any new evaluation.
 
-### metrics_smoke
+### metrics_gemma2-2b_bio
 
-![metrics_smoke](metrics_smoke.png)
+![metrics_gemma2-2b_bio](metrics_gemma2-2b_bio.png)
 
-### tradeoff_smoke
+### tradeoff_gemma2-2b_bio
 
-![tradeoff_smoke](tradeoff_smoke.png)
+![tradeoff_gemma2-2b_bio](tradeoff_gemma2-2b_bio.png)
 
-### training_smoke_crisp
+### metrics_gemma2-2b_cyber
 
-![training_smoke_crisp](training_smoke_crisp.png)
+![metrics_gemma2-2b_cyber](metrics_gemma2-2b_cyber.png)
 
-### training_smoke_elm
+### tradeoff_gemma2-2b_cyber
 
-![training_smoke_elm](training_smoke_elm.png)
+![tradeoff_gemma2-2b_cyber](tradeoff_gemma2-2b_cyber.png)
 
-### training_smoke_rmu
+### training_gemma2-2b_bio_crisp
 
-![training_smoke_rmu](training_smoke_rmu.png)
+![training_gemma2-2b_bio_crisp](training_gemma2-2b_bio_crisp.png)
+
+### training_gemma2-2b_cyber_crisp
+
+![training_gemma2-2b_cyber_crisp](training_gemma2-2b_cyber_crisp.png)
