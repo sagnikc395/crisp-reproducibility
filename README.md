@@ -30,11 +30,9 @@ Deliberately out of scope:
 
 ## How this is run
 
-The laptop here is an M4 with no CUDA, so the work is split:
-
 | Where | What |
 | --- | --- |
-| Your machine | `python -m crisp fetch` — materialise the corpora and benchmarks into `data/` — plus the tests and the smoke config |
+| Local Machine| `python -m crisp fetch` — materialise the corpora and benchmarks into `data/` — plus the tests and the smoke config |
 | Google Colab | feature selection, CRISP training, the RMU/ELM baselines, evaluation, figures — [`notebooks/crisp_colab.ipynb`](notebooks/crisp_colab.ipynb) |
 | This repo | the results table and figures, committed back from the notebook with a GitHub token |
 
@@ -57,6 +55,8 @@ dependencies are installed inside the Colab notebook around Colab's own torch.
 
 ### Access you need to provide
 
+Check the `.env.sample` file . 
+
 | Asset | Status | How |
 | --- | --- | --- |
 | `cais/wmdp` MCQs, `cais/mmlu` | public | nothing to do |
@@ -66,10 +66,6 @@ dependencies are installed inside the Colab notebook around Colab's own torch.
 | Gemma Scope SAEs | public | nothing to do |
 | `Qwen/Qwen3-4B-Thinking-2507` (fluency/concept rater) | public | downloaded on first judged eval (~8 GB); skip with `--no-judge` |
 | GitHub personal access token | yours | fine-grained, this repo, **Contents: read and write** — lets the notebook push results back |
-
-Locally, credentials are read from a `.env` file at the repo root
-(`echo 'HF_TOKEN=hf_...' >> .env`), so nothing needs exporting per shell. On Colab
-they come from the notebook's 🔑 Secrets panel instead.
 
 
 ## Fetch the datasets
@@ -101,35 +97,6 @@ preinstalled torch, runs `scripts/reproduce.sh`, renders the table and the
 figures, and **commits `artifacts/results/` and `artifacts/figures/` straight back
 to this repo**. `CONFIG`, `STAGES` and `REPO` at the top of the notebook select the
 run.
-
-| Secret (🔑 Colab sidebar) | Needed for |
-| --- | --- |
-| `HF_TOKEN` | the gated `google/gemma-2-2b` weights and the gated bio forget corpus |
-| `GITHUB_TOKEN` | cloning, and pushing the results back — fine-grained, this repo only, **Contents: read and write** |
-
-| Runtime | VRAM | What fits |
-| --- | --- | --- |
-| T4 (free) | ~15 GB | `smoke.yaml`; `gemma2-2b` eval, and training only tightly |
-| L4 (Pro) | ~22 GB | full `gemma2-2b_{bio,cyber}` in bf16 — the target to aim for |
-| A100 40 GB | 40 GB | as above, comfortably and roughly twice as fast |
-
-Rough wall clock on an L4: 3–5 hours for all four stages, of which
-`--stages original,crisp` — the headline comparison — is about half. Colab
-disconnects well before that, so the notebook symlinks `data/` onto Drive and
-copies `artifacts/` back and forth; because each stage is skipped when its result
-JSON already exists, re-running the notebook resumes rather than restarting.
-
-**Drive quota.** Only `data/` and `artifacts/` go to Drive. The HF cache stays on
-Colab's local disk (`/content/hf_cache`, ~100 GB free) because Gemma-2-2B (~5 GB),
-six Gemma Scope SAEs (~1.8 GB) and the Qwen3 rater (~8 GB) together exceed a free
-15 GB Drive account. Weights re-download after a disconnect — ~10 minutes, against
-a quota you cannot exceed. Upload only the domain you are running: the cyber
-corpora are ~80 MB, the bio pair ~2.5 GB. The notebook's `LITE = True` drops to
-three SAE layers and skips the rater, which also keeps a free-tier session inside
-its VRAM and disk budget at the cost of blank Fluency/Concept columns.
-
-The token never lands on disk: the clone URL carries it, then the remote is reset
-to the plain HTTPS URL, and the push re-attaches it for that one command.
 
 ## What the pipeline does
 
@@ -349,5 +316,5 @@ src/crisp/
 
 ## References:
 
-1. https://arxiv.org/pdf/2410.19278#page=12.18
-2. https://arxiv.org/abs/2508.13650
+1. https://arxiv.org/abs/2508.13650
+2. https://arxiv.org/pdf/2410.19278
